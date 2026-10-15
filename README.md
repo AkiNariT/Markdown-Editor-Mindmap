@@ -1,6 +1,6 @@
 <p align="center"><img src="assets/icon.svg" width="80" height="80" alt="MD"></p>
 
-# MD
+# MD — 极简 Markdown 阅读、编辑与思维导图
 
 极简的 Markdown 桌面阅读与编辑器。直接编辑排版后的文字，也可以查看源码、双向对照，并用思维导图连接本地 Markdown 文件。
 

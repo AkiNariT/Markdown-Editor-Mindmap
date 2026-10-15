@@ -1,4 +1,4 @@
-# MD
+# MD — Minimal Markdown Reader, Editor & Mindmaps
 
 A minimal desktop Markdown reader and editor with visual editing, source/split views, and mindmaps linked to local Markdown files.
 
