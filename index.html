@@ -1,0 +1,101 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' moye-image: https: http: data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>MD</title><link rel="stylesheet" href="dist/style.css"></head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img class="brand-mark" src="assets/icon.svg" alt="MD"></div>
+    <div class="file-actions">
+      <button id="outline-toggle" class="icon-button" aria-label="章节目录" title="章节目录" aria-expanded="false" data-i18n-title="章节目录" data-i18n-aria-label="章节目录"><i data-icon="panel"></i></button>
+      <span class="separator"></span>
+      <button id="new" class="icon-button" aria-label="新建" title="新建 Ctrl+N" data-i18n-title="新建 Ctrl+N" data-i18n-aria-label="新建"><i data-icon="new"></i></button>
+      <button id="open" class="text-button" aria-label="打开" title="打开 Ctrl+O" data-i18n-title="打开 Ctrl+O" data-i18n-aria-label="打开"><i data-icon="folder"></i><span data-i18n="打开">打开</span></button>
+      <button id="skill-template" class="text-button" aria-label="SKILL 模板" title="打开 AI SKILL 制作模板" data-i18n-title="打开 AI SKILL 制作模板" data-i18n-aria-label="SKILL 模板"><i data-icon="copy"></i><span data-i18n="SKILL 模板">SKILL 模板</span></button>
+      <button id="new-mindmap" class="text-button" aria-label="新建思维导图" title="新建思维导图" data-i18n-title="新建思维导图" data-i18n-aria-label="新建思维导图"><i data-icon="mindmap"></i><span data-i18n="思维导图">思维导图</span></button>
+    </div>
+    <div class="document-label"><button id="rename" class="document-name-button" aria-label="命名文件" title="命名 / 重命名 · F2" data-i18n-title="命名 / 重命名 · F2" data-i18n-aria-label="命名文件"><span id="document-name" data-i18n="未命名">未命名</span><i data-icon="edit"></i></button><span id="dirty-dot" hidden="">•</span></div>
+    <div class="right-actions">
+      <button id="save" class="text-button" aria-label="保存" title="保存 Ctrl+S" data-i18n-title="保存 Ctrl+S" data-i18n-aria-label="保存"><i data-icon="save"></i><span data-i18n="保存">保存</span></button>
+      <span class="separator"></span>
+      <button id="mode" class="mode-button" aria-label="编辑" data-i18n-aria-label="编辑"><i data-icon="edit"></i><span data-i18n="编辑">编辑</span></button>
+      <button id="more-toggle" class="icon-button" aria-label="更多操作" title="更多操作" aria-expanded="false" data-i18n-title="更多操作" data-i18n-aria-label="更多操作"><i data-icon="more"></i></button>
+    </div>
+  </header>
+  <div class="document-row">
+    <nav id="document-tabs" class="document-tabs" role="tablist" aria-label="打开的文档" data-i18n-aria-label="打开的文档"></nav>
+    <div id="view-switch" class="view-switch" role="group" aria-label="文档显示模式" data-i18n-aria-label="文档显示模式">
+      <button data-view="render" aria-pressed="true" title="排版正文与可视化编辑" data-i18n-title="排版正文与可视化编辑" data-i18n="正文">正文</button>
+      <button data-view="source" aria-pressed="false" title="完整 Markdown 源码" data-i18n-title="完整 Markdown 源码" data-i18n="源码">源码</button>
+      <button data-view="compare" aria-pressed="false" title="源码与渲染结果实时对照" data-i18n-title="源码与渲染结果实时对照" data-i18n="对照">对照</button>
+    </div>
+  </div>
+  <main class="workspace">
+    <aside id="outline" hidden=""><div class="aside-heading" data-i18n="文档目录">文档目录</div><nav id="outline-items" aria-label="章节目录" data-i18n-aria-label="章节目录"><p class="empty-outline" data-i18n="标题会显示在这里">标题会显示在这里</p></nav><div class="aside-note" data-i18n="循着文字，慢慢阅读。">循着文字，慢慢阅读。</div></aside>
+    <section id="document-pane" class="document-pane" role="tabpanel">
+      <div class="page-bar">
+        <span id="page-mode" data-i18n="阅 读">阅 读</span>
+        <label id="sync-scroll-control" class="sync-scroll-control" hidden=""><input id="sync-scroll" type="checkbox" aria-label="同步滚动" checked="" data-i18n-aria-label="同步滚动"><span data-i18n="同步滚动">同步滚动</span></label>
+        <div id="edit-controls" class="edit-controls" hidden="" role="toolbar" aria-label="常用格式" data-i18n-aria-label="常用格式">
+          <label class="format-picker block-picker"><select id="block-style" aria-label="段落格式" data-i18n-aria-label="段落格式"><option value="paragraph" data-i18n="正文">正文</option><option value="1" data-i18n="一级标题">一级标题</option><option value="2" data-i18n="二级标题">二级标题</option><option value="3" data-i18n="三级标题">三级标题</option><option value="4" data-i18n="四级标题">四级标题</option><option value="5" data-i18n="五级标题">五级标题</option><option value="6" data-i18n="六级标题">六级标题</option></select></label>
+          <button data-command="bulletList" aria-label="无序列表" aria-pressed="false" title="无序列表" data-i18n-title="无序列表" data-i18n-aria-label="无序列表"><i data-icon="list"></i><span data-i18n="无序列表">无序列表</span></button>
+          <button data-command="orderedList" aria-label="有序列表" aria-pressed="false" title="有序列表" data-i18n-title="有序列表" data-i18n-aria-label="有序列表"><i data-icon="numbered"></i><span data-i18n="有序列表">有序列表</span></button>
+          <button data-command="taskList" aria-label="待办清单" aria-pressed="false" title="待办清单" data-i18n-title="待办清单" data-i18n-aria-label="待办清单"><i data-icon="check"></i><span data-i18n="待办">待办</span></button>
+          <button data-command="blockquote" aria-label="引用" aria-pressed="false" title="引用" data-i18n-title="引用" data-i18n-aria-label="引用"><i data-icon="quote"></i><span data-i18n="引用">引用</span></button>
+          <button data-command="table" aria-label="表格" title="插入表格" data-i18n-title="插入表格" data-i18n-aria-label="表格"><i data-icon="table"></i><span data-i18n="表格">表格</span></button>
+          <button data-command="image" aria-label="图片" title="插入图片" data-i18n-title="插入图片" data-i18n-aria-label="图片"><i data-icon="image"></i><span data-i18n="图片">图片</span></button>
+          <button data-command="codeBlock" aria-label="代码块" aria-pressed="false" title="代码块" data-i18n-title="代码块" data-i18n-aria-label="代码块"><i data-icon="code"></i><span data-i18n="代码块">代码块</span></button>
+          <button data-command="horizontalRule" aria-label="分隔线" title="插入分隔线" data-i18n-title="插入分隔线" data-i18n-aria-label="分隔线"><i data-icon="minus"></i><span data-i18n="分隔线">分隔线</span></button>
+          <label id="code-language-picker" class="format-picker" hidden=""><span data-i18n="语言">语言</span><select id="code-language" aria-label="代码语言" data-i18n-aria-label="代码语言"><option value="" data-i18n="自动识别">自动识别</option><option value="plaintext" data-i18n="纯文本">纯文本</option><option value="python">Python</option><option value="javascript">JavaScript</option><option value="typescript">TypeScript</option><option value="xml">HTML / XML</option><option value="css">CSS</option><option value="json">JSON</option><option value="bash">Bash / Shell</option><option value="sql">SQL</option><option value="yaml">YAML</option><option value="java">Java</option><option value="c">C</option><option value="cpp">C++</option><option value="csharp">C#</option><option value="go">Go</option><option value="rust">Rust</option><option value="php">PHP</option><option value="ruby">Ruby</option><option value="markdown">Markdown</option><option value="swift">Swift</option><option value="kotlin">Kotlin</option><option value="lua">Lua</option><option value="r">R</option></select></label>
+        </div>
+      </div>
+      <div class="document-content">
+      <div id="source-container" hidden=""></div>
+      <div class="canvas">
+        <div id="protection" hidden=""><i data-icon="info"></i><span id="protection-text"></span></div>
+        <section id="frontmatter-info" class="metadata-card" hidden="" aria-label="文档信息" data-i18n-aria-label="文档信息">
+          <div id="skill-fields" hidden="">
+            <label for="skill-name" data-i18n="技能名称">技能名称</label>
+            <input id="skill-name" aria-label="技能名称" maxlength="64" autocomplete="off" spellcheck="false" readonly="" data-i18n-aria-label="技能名称">
+            <label for="skill-description" data-i18n="用途与触发条件">用途与触发条件</label>
+            <textarea id="skill-description" aria-label="用途与触发条件" maxlength="1024" rows="3" readonly="" data-i18n-aria-label="用途与触发条件"></textarea>
+          </div>
+          <p id="metadata-note" data-i18n="文件头信息会随正文一同保留。">文件头信息会随正文一同保留。</p>
+        </section>
+        <article id="editor" aria-label="Markdown 文档" data-i18n-aria-label="Markdown 文档"></article>
+        <div class="page-end" aria-hidden="true">· · ·</div>
+      </div>
+      </div>
+    </section>
+    <section id="mindmap-pane" class="mindmap-pane" role="tabpanel" aria-label="思维导图工作区" hidden="" data-i18n-aria-label="思维导图工作区"></section>
+  </main>
+  <footer><span id="save-state" data-i18n="本地文档">本地文档</span><span id="recovery-state" title="草稿和阅读位置自动保存在本机。原始文件仍需点击保存。" data-i18n-title="草稿和阅读位置自动保存在本机。原始文件仍需点击保存。"></span><span id="file-path" title=""></span><span id="word-count" data-i18n="0 字">0 字</span><div class="zoom-control" role="group" aria-label="文档缩放" data-i18n-aria-label="文档缩放"><button id="zoom-out" aria-label="缩小文档" title="缩小 Ctrl+−" data-i18n-title="缩小 Ctrl+−" data-i18n-aria-label="缩小文档">−</button><button id="zoom-reset" aria-label="当前缩放 100%，点击恢复 100%" title="Ctrl＋滚轮缩放 · 点击或 Ctrl+0 恢复 100%" aria-live="polite" data-i18n-title="Ctrl＋滚轮缩放 · 点击或 Ctrl+0 恢复 100%" data-i18n-aria-label="当前缩放 100%，点击恢复 100%">100%</button><button id="zoom-in" aria-label="放大文档" title="放大 Ctrl++" data-i18n-title="放大 Ctrl++" data-i18n-aria-label="放大文档">+</button></div><span class="footer-brand">MD · Markdown</span></footer>
+  <div id="selection-toolbar" class="floating-toolbar" hidden="" role="toolbar" aria-label="文字格式" data-i18n-aria-label="文字格式">
+    <button data-command="bold" aria-label="粗体" title="粗体 Ctrl+B" data-i18n-title="粗体 Ctrl+B" data-i18n-aria-label="粗体"><strong>B</strong></button>
+    <button data-command="italic" aria-label="斜体" title="斜体 Ctrl+I" data-i18n-title="斜体 Ctrl+I" data-i18n-aria-label="斜体"><em>I</em></button>
+    <button data-command="strike" aria-label="删除线" title="删除线" data-i18n-title="删除线" data-i18n-aria-label="删除线"><s>S</s></button>
+    <span class="toolbar-divider"></span>
+    <button data-command="heading1" aria-label="一级标题" title="一级标题" data-i18n-title="一级标题" data-i18n-aria-label="一级标题">H₁</button>
+    <button data-command="heading2" aria-label="二级标题" title="二级标题" data-i18n-title="二级标题" data-i18n-aria-label="二级标题">H₂</button>
+    <button data-command="paragraph" aria-label="正文" title="正文" data-i18n-title="正文" data-i18n-aria-label="正文">¶</button>
+    <span class="toolbar-divider"></span>
+    <button data-command="link" aria-label="链接" title="链接" data-i18n-title="链接" data-i18n-aria-label="链接"><i data-icon="link"></i></button>
+  </div>
+  <div id="more-menu" class="dropdown" hidden="" role="menu" aria-label="更多操作" data-i18n-aria-label="更多操作">
+    <button id="save-as" role="menuitem"><i data-icon="copy"></i><span data-i18n="另存为">另存为</span><span class="shortcut">Ctrl+Shift+S</span></button>
+    <button id="undo" role="menuitem"><i data-icon="undo"></i><span data-i18n="撤销">撤销</span><span class="shortcut">Ctrl+Z</span></button>
+    <button id="redo" role="menuitem"><i data-icon="redo"></i><span data-i18n="重做">重做</span><span class="shortcut">Ctrl+Y</span></button>
+    <div class="menu-divider"></div>
+    <button id="theme" role="menuitem"><i data-icon="moon"></i><span id="theme-label" data-i18n="黑色外观">黑色外观</span></button>
+    <button id="settings" role="menuitem"><i data-icon="more"></i><span data-i18n="设置">设置</span></button>
+    <button id="about" role="menuitem"><i data-icon="info"></i><span data-i18n="使用提示">使用提示</span></button>
+  </div>
+  <div id="table-tools" class="table-tools" hidden="" aria-label="表格操作" data-i18n-aria-label="表格操作"><span data-i18n="表格">表格</span><button data-table="addRowAfter" data-i18n="添加行">添加行</button><button data-table="addColumnAfter" data-i18n="添加列">添加列</button><button data-table="deleteRow" data-i18n="删除行">删除行</button><button data-table="deleteColumn" data-i18n="删除列">删除列</button><button data-table="deleteTable" data-i18n="删除表格">删除表格</button></div>
+  <dialog id="link-dialog"><form method="dialog"><div class="dialog-heading" data-i18n="添加链接">添加链接</div><label><span data-i18n="显示文字">显示文字</span><input id="link-text" placeholder="链接文字" data-i18n-placeholder="链接文字"></label><label><span data-i18n="网页或邮件地址">网页或邮件地址</span><input id="link-url" placeholder="https://example.com" required=""></label><p id="link-error" class="form-error" hidden="" data-i18n="请输入有效的网页或邮件地址。">请输入有效的网页或邮件地址。</p><div class="dialog-actions"><button value="cancel" data-i18n="取消">取消</button><button id="link-confirm" type="button" class="primary" data-i18n="确定">确定</button></div></form></dialog>
+  <dialog id="table-dialog"><form method="dialog"><div class="dialog-heading" data-i18n="插入表格">插入表格</div><div class="table-size"><label><span data-i18n="行数">行数</span><input id="table-rows" type="number" min="2" max="20" value="3"></label><label><span data-i18n="列数">列数</span><input id="table-cols" type="number" min="2" max="10" value="3"></label></div><p class="dialog-note" data-i18n="第一行为标题行，点击单元格即可编辑。">第一行为标题行，点击单元格即可编辑。</p><div class="dialog-actions"><button value="cancel" data-i18n="取消">取消</button><button id="table-confirm" type="button" class="primary" data-i18n="插入">插入</button></div></form></dialog>
+  <dialog id="help-dialog"><form method="dialog"><div class="dialog-heading">MD <small>0.1.21</small></div><p data-i18n="草稿与阅读位置自动备份在本机，重启后恢复标签、模式、缩放和最近成功备份的内容；原文件仍需点击保存，撤销历史不跨重启保留。明确放弃或关闭的草稿不会恢复。底部可查看备份状态。">草稿与阅读位置自动备份在本机，重启后恢复标签、模式、缩放和最近成功备份的内容；原文件仍需点击保存，撤销历史不跨重启保留。明确放弃或关闭的草稿不会恢复。底部可查看备份状态。</p><p data-i18n="打开文档后即可阅读，点击「编辑」直接修改正文。顶栏下方的标签栏可切换多份文档，每份分别保留阅读位置、修改与编辑状态。打开、新建与模板都增加标签；关闭标签或退出时会提示保存未完成的修改。">打开文档后即可阅读，点击「编辑」直接修改正文。顶栏下方的标签栏可切换多份文档，每份分别保留阅读位置、修改与编辑状态。打开、新建与模板都增加标签；关闭标签或退出时会提示保存未完成的修改。</p><p data-i18n="点击顶部「思维导图」创建手动导图。可新增子主题或同级主题、编辑节点文字、关联 Markdown 文件。已有文件的节点可双击打开；未关联节点双击后选择新 Markdown 文件的保存位置，创建后自动关联并进入编辑。取消创建不会改变节点，撤销关联会保留已创建的文件。导图独立保存为 .mdmap，可从「打开」重新载入。Ctrl＋滚轮缩放，拖动空白处平移；编辑时可拖动节点，父主题会带动分支。">点击顶部「思维导图」创建手动导图。可新增子主题或同级主题、编辑节点文字、关联 Markdown 文件。已有文件的节点可双击打开；未关联节点双击后选择新 Markdown 文件的保存位置，创建后自动关联并进入编辑。取消创建不会改变节点，撤销关联会保留已创建的文件。导图独立保存为 .mdmap，可从「打开」重新载入。Ctrl＋滚轮缩放，拖动空白处平移；编辑时可拖动节点，父主题会带动分支。</p><p data-i18n="导图进入编辑后，选中节点即可设置文字颜色、背景颜色和节点样式。提供经典、圆角、便签、胶囊、双线样式；默认背景随浅色或黑色外观变化。自定义背景会自动搭配清晰的默认文字颜色，已手动选择的文字颜色保留。节点文字可在顶部输入框或右键「编辑文字」修改。关联 Markdown 的节点显示星星，单击星星也可打开文件；未关联节点没有标记。">导图进入编辑后，选中节点即可设置文字颜色、背景颜色和节点样式。提供经典、圆角、便签、胶囊、双线样式；默认背景随浅色或黑色外观变化。自定义背景会自动搭配清晰的默认文字颜色，已手动选择的文字颜色保留。节点文字可在顶部输入框或右键「编辑文字」修改。关联 Markdown 的节点显示星星，单击星星也可打开文件；未关联节点没有标记。</p><p data-i18n="右键节点选择「建立连接」，再点击目标节点创建虚线关系。选中虚线即可填写连接说明，双击虚线或说明可直接编辑；右键也可编辑说明或删除连接。说明显示在连线旁，并随移动和缩放更新。说明、背景和样式都支持撤销及保存，使用这些新功能后导图保存为 v4 格式，需要 MD 0.1.21 或更新版本打开；旧版导图仍可读取。">右键节点选择「建立连接」，再点击目标节点创建虚线关系。选中虚线即可填写连接说明，双击虚线或说明可直接编辑；右键也可编辑说明或删除连接。说明显示在连线旁，并随移动和缩放更新。说明、背景和样式都支持撤销及保存，使用这些新功能后导图保存为 v4 格式，需要 MD 0.1.21 或更新版本打开；旧版导图仍可读取。</p><p data-i18n="点击顶部文件名或铅笔，也可按 F2 命名。新文档可先命名，保存时沿用；已有文件会在原目录改名，未保存正文仍保留。省略扩展名时自动补全 .md。">点击顶部文件名或铅笔，也可按 F2 命名。新文档可先命名，保存时沿用；已有文件会在原目录改名，未保存正文仍保留。省略扩展名时自动补全 .md。</p><p data-i18n="正文上方的格式栏可直接设置标题、正文和列表，不必选中文字。选中文字后还能设置粗体、斜体和链接；引用、表格、图片、代码块和分隔线也直接显示在格式栏。图片会保存在文档旁边的资源文件夹。代码块会实时显示语法颜色，光标进入代码块时可在编辑栏选择语言、自动识别或纯文本。">正文上方的格式栏可直接设置标题、正文和列表，不必选中文字。选中文字后还能设置粗体、斜体和链接；引用、表格、图片、代码块和分隔线也直接显示在格式栏。图片会保存在文档旁边的资源文件夹。代码块会实时显示语法颜色，光标进入代码块时可在编辑栏选择语言、自动识别或纯文本。</p><p data-i18n="标签栏右侧可切换「正文」「源码」「对照」。源码显示完整 Markdown，点击「编辑」后可直接修改；对照模式点击「编辑」后，源码和排版正文都可以修改，两侧立即同步；格式栏也可直接使用。两侧及 SKILL 字段按最近编辑顺序共享撤销。窄窗口自动上下排列。「同步滚动」按阅读进度联动，可取消勾选。每个文档分别保留模式和位置。">标签栏右侧可切换「正文」「源码」「对照」。源码显示完整 Markdown，点击「编辑」后可直接修改；对照模式点击「编辑」后，源码和排版正文都可以修改，两侧立即同步；格式栏也可直接使用。两侧及 SKILL 字段按最近编辑顺序共享撤销。窄窗口自动上下排列。「同步滚动」按阅读进度联动，可取消勾选。每个文档分别保留模式和位置。</p><p data-i18n="Ctrl＋滚轮调整文档缩放，底部显示比例（50%～200%）。也可点击 − / +；点击百分比或按 Ctrl+0 恢复 100%。每份文档分别保留比例。">Ctrl＋滚轮调整文档缩放，底部显示比例（50%～200%）。也可点击 − / +；点击百分比或按 Ctrl+0 恢复 100%。每份文档分别保留比例。</p><p data-i18n="点击顶部「SKILL 模板」新建制作模板。直接填写技能名称和用途，在下方编辑正文，再保存为 SKILL.md。原有文件头的其他信息会完整保留。">点击顶部「SKILL 模板」新建制作模板。直接填写技能名称和用途，在下方编辑正文，再保存为 SKILL.md。原有文件头的其他信息会完整保留。</p><p><span data-i18n="Ctrl+O 打开 · Ctrl+S 保存 · Ctrl+N 新建">Ctrl+O 打开 · Ctrl+S 保存 · Ctrl+N 新建</span><br><span data-i18n="Ctrl+Tab / Ctrl+Shift+Tab 切换标签 · Ctrl+W 关闭标签">Ctrl+Tab / Ctrl+Shift+Tab 切换标签 · Ctrl+W 关闭标签</span><br><span data-i18n="Ctrl+B 粗体 · Ctrl+I 斜体 · Ctrl+Z 撤销">Ctrl+B 粗体 · Ctrl+I 斜体 · Ctrl+Z 撤销</span><br><span data-i18n="Ctrl+Shift+S 另存为 · Ctrl+Shift+E 切换阅读/编辑">Ctrl+Shift+S 另存为 · Ctrl+Shift+E 切换阅读/编辑</span></p><p class="dialog-note" data-i18n="支持 UTF-8 Markdown。特殊扩展会显示保护提示，编辑后需要另存副本。文件含有远程图片时，显示图片会连接其服务器。">支持 UTF-8 Markdown。特殊扩展会显示保护提示，编辑后需要另存副本。文件含有远程图片时，显示图片会连接其服务器。</p><div class="dialog-actions"><button class="primary" data-i18n="知道了">知道了</button></div></form></dialog>
+  <dialog id="name-dialog"><form id="name-form"><div id="name-heading" class="dialog-heading" data-i18n="命名文件">命名文件</div><label for="filename"><span data-i18n="文件名">文件名</span><input id="filename" maxlength="255" autocomplete="off" spellcheck="false" placeholder="输入文件名" data-i18n-placeholder="输入文件名"></label><p id="name-note" class="dialog-note" data-i18n="无需先保存，保存时会使用这个名称。未填写扩展名时自动补全 .md。">无需先保存，保存时会使用这个名称。未填写扩展名时自动补全 .md。</p><p id="name-error" class="form-error" role="alert" hidden=""></p><div class="dialog-actions"><button id="name-cancel" type="button" data-i18n="取消">取消</button><button id="name-confirm" class="primary" type="submit" data-i18n="确定">确定</button></div></form></dialog>
+  <div id="toast" role="status" hidden=""></div>
+  <dialog id="settings-dialog" aria-labelledby="settings-heading"><form method="dialog"><div id="settings-heading" class="dialog-heading" data-i18n="设置">设置</div><label for="language-select"><span data-i18n="语言">语言</span><select id="language-select"><option value="zh-CN" lang="zh-CN">简体中文</option><option value="en" lang="en">English</option></select></label><p class="dialog-note" data-i18n="语言切换立即生效，不会更改文档内容。">语言切换立即生效，不会更改文档内容。</p><p id="settings-error" class="form-error" role="alert" hidden=""></p><div class="dialog-actions"><button class="primary" data-i18n="完成">完成</button></div></form></dialog>
+  <script src="dist/app.js"></script>
+
+
+</body></html>

@@ -1,0 +1,46 @@
+const { _electron: electron } = require('playwright');
+const { writeFile, mkdir } = require('node:fs/promises');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+(async () => {
+  const dir = path.resolve(__dirname, '../.desktop-test/mindmap-open-' + Date.now()); await mkdir(dir, { recursive: true });
+  const note = path.join(dir, '双击笔记.md'), file = path.join(dir, '双击导图.mdmap');
+  await writeFile(note, '# 双击笔记\n\n' + Array.from({ length: 60 }, (_, i) => `## 第${i}节\n\n段落内容。\n\n`).join(''));
+  const node = (id, parent, linked = null) => ({ id, parent, text: id, file: linked, collapsed: false });
+  await writeFile(file, JSON.stringify({ format: 'md-mindmap', version: 1, root: 'root', nodes: [node('root', null), node('linked', 'root', note), node('plain', 'root')] }));
+  const app = await electron.launch({ executablePath: process.env.MOYE_EXE || require('electron'), args: [...(process.env.MOYE_EXE ? [] : [path.resolve(__dirname, '..')]), file, '--user-data-dir=' + path.join(dir, 'profile')], timeout: 30000 });
+  try {
+    const page = await app.firstWindow(); page.setDefaultTimeout(8000); const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const idle = () => page.waitForFunction(() => !document.querySelector('#save').disabled);
+    const button = name => page.getByRole('button', { name, exact: true });
+    const linked = page.locator('[data-node-id="linked"]'), card = page.locator('[data-node-card="linked"]'); await linked.waitFor();
+    const back = async () => { await page.getByRole('tab', { name: '双击导图.mdmap', exact: true }).click(); await idle(); };
+    const inNote = async () => { await page.waitForFunction(() => document.querySelector('#document-name').textContent === '双击笔记.md'); await idle(); assert.equal(await page.getByRole('tab').count(), 2); };
+    await linked.dblclick(); await inNote();
+    await button('源码').click(); await button('编辑').click();
+    const source = page.locator('.source-input'); await source.focus(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('未保存草稿');
+    await source.evaluate(input => { input.scrollTop = 800; }); const position = await source.evaluate(input => input.scrollTop);
+    await back(); await card.dblclick({ position: { x: 3, y: 3 } }); await inNote();
+    assert.ok((await source.inputValue()).endsWith('未保存草稿')); assert.equal(await source.evaluate(input => input.scrollTop), position, '双击复用文档标签并保留位置');
+    await back(); await button('编辑').click(); await idle(); await linked.dblclick(); await inNote();
+    await back(); await card.dblclick({ position: { x: 3, y: 3 } }); await inNote();
+    await app.evaluate(({ dialog }) => { globalThis.createCalls = 0; dialog.showSaveDialog = async () => { globalThis.createCalls++; return { canceled: true }; }; });
+    await back(); await page.locator('[data-node-id="plain"]').dblclick(); await idle();
+    assert.equal(await app.evaluate(() => globalThis.createCalls), 1, '未关联节点双击进入创建文件流程');
+    assert.equal(await page.getByRole('tab').count(), 2, '取消创建保留已有标签');
+    await page.locator('[data-node-id="plain"]').click({ button: 'right' }); await page.locator('[data-action="edit"]').click();
+    const text = page.getByRole('textbox', { name: '节点文字', exact: true }); assert.ok(await text.evaluate(input => input === document.activeElement), '未关联节点通过右键编辑文字');
+    await linked.click({ button: 'right' }); await page.locator('[data-action="edit"]').click();
+    assert.ok(await text.evaluate(input => input === document.activeElement), '关联节点可以通过右键编辑文字');
+    await page.locator('[data-open-node="linked"]').click(); await inNote();
+    assert.ok((await source.inputValue()).endsWith('未保存草稿')); assert.equal(await source.evaluate(input => input.scrollTop), position);
+    await back();
+    await page.locator('[data-node-id="root"]').click({ button: 'right' }); await page.locator('[data-action="connect"]').click(); await linked.dblclick();
+    assert.equal(await page.locator('#document-name').textContent(), '双击导图.mdmap', '双击连接目标只完成连线，不误开文件');
+    assert.equal(await page.locator('[data-connection-line]').count(), 1); await page.keyboard.press('Control+z');
+    const box = await linked.boundingBox(); await page.mouse.move(box.x + 40, box.y + 30); await page.mouse.down(); await page.mouse.move(box.x - 20, box.y, { steps: 6 }); await page.mouse.up();
+    assert.equal(await page.locator('#document-name').textContent(), '双击导图.mdmap', '拖动不会打开文件');
+    assert.deepEqual(errors, []);
+    console.log('MINDMAP OPEN PASS: real double-click title/card in read/edit, existing dirty Markdown tab and position retained, unlinked creation cancellation, context text editing, connect/drag protections and star single-click.');
+  } finally { await app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.destroy(); }).catch(() => {}); await app.close().catch(() => {}); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

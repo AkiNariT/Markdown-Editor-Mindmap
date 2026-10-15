@@ -1,0 +1,67 @@
+{
+  "name": "moye",
+  "productName": "MD",
+  "version": "0.1.21",
+  "description": "极简 Markdown 阅读与可视化编辑器",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:desktop": "node tests/desktop.cjs",
+    "test:layout": "node tests/layout.cjs",
+    "test:code": "node tests/code.cjs",
+    "start": "electron .",
+    "package": "node scripts/package.mjs",
+    "test:template": "node tests/template.cjs",
+    "test:yaml": "node tests/yaml.cjs",
+    "test:position": "node tests/position.cjs",
+    "test:tabs": "node tests/tabs.cjs",
+    "test:source": "node tests/source.cjs",
+    "test:zoom": "node tests/zoom.cjs",
+    "test:compare": "node tests/compare.cjs",
+    "test:naming": "node tests/naming.cjs",
+    "test:mindmap": "node tests/mindmap.cjs",
+    "test:mindmap-interaction": "node tests/mindmap-interaction.cjs",
+    "test:mindmap-style": "node tests/mindmap-style.cjs",
+    "test:mindmap-open": "node tests/mindmap-open.cjs",
+    "test:recovery": "node tests/recovery.electron.cjs",
+    "test:recovery-close": "node tests/recovery-close.cjs",
+    "test:recovery-map": "node tests/recovery-map.cjs",
+    "test:windows": "node tests/windows.electron.cjs",
+    "test:windows-dpi": "node tests/windows-dpi.cjs",
+    "test:language": "node tests/language.cjs",
+    "test:mindmap-features": "node tests/mindmap-features.cjs"
+  },
+  "license": "MIT",
+  "author": "MD contributors",
+  "homepage": "https://github.com/AkiNariT/MD",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AkiNariT/MD.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AkiNariT/MD/issues"
+  },
+  "keywords": ["markdown", "editor", "mindmap", "electron", "windows"],
+  "dependencies": {
+    "@tiptap/core": "3.31.4",
+    "@tiptap/extension-code-block-lowlight": "3.31.4",
+    "@tiptap/extension-image": "3.31.4",
+    "@tiptap/extension-list": "3.31.4",
+    "@tiptap/extension-placeholder": "3.31.4",
+    "@tiptap/extension-table": "3.31.4",
+    "@tiptap/markdown": "3.31.4",
+    "@tiptap/starter-kit": "3.31.4",
+    "lowlight": "3.3.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.5.1",
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.2",
+    "playwright": "1.58.2"
+  }
+}

@@ -1,0 +1,39 @@
+name: 问题报告 / Bug report
+description: 报告可复现的问题，请使用不含私人内容的示例。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "安全漏洞请按 SECURITY.md 私下报告。不要上传私人文档、恢复记录或访问令牌。"
+  - type: input
+    id: version
+    attributes:
+      label: MD 版本
+      placeholder: "例如 0.1.21"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows 版本与系统缩放
+      placeholder: "例如 Windows 11 x64，125%"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 写出操作步骤，并使用可公开的最小 Markdown 或导图示例。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望与实际表现
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 可提供已去除私人信息的截图。

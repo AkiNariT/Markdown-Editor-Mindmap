@@ -1,0 +1,14 @@
+/* All variants keep the base 216 × 96 border box used by layout and connectors. */
+.mindmap-node .mindmap-node-title{color:var(--mindmap-node-text,inherit)}
+.mindmap-node[data-node-background]{background:var(--mindmap-node-background);border-color:color-mix(in srgb,var(--mindmap-node-foreground) 35%,var(--mindmap-node-background))}
+.mindmap-node[data-node-background] .mindmap-node-button,.mindmap-node[data-node-background] .mindmap-file{color:var(--mindmap-node-foreground)}
+.mindmap-node[data-node-background] .mindmap-file:hover{color:var(--mindmap-node-foreground);background:color-mix(in srgb,var(--mindmap-node-foreground) 12%,transparent)}
+.mindmap-node[data-node-background].mindmap-selected{border-color:var(--mindmap-node-foreground);box-shadow:0 0 0 2px var(--text)}
+.mindmap-node[data-node-style=plain]{border-radius:8px}
+.mindmap-node[data-node-style=rounded]{border-radius:20px}
+.mindmap-node[data-node-style=note]{border-radius:3px;padding-left:17px}
+.mindmap-node[data-node-style=note]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 2px 2px 0;background:var(--mindmap-node-foreground,var(--text));opacity:.25;pointer-events:none}
+.mindmap-node[data-node-style=note]::after{content:"";position:absolute;right:0;bottom:0;width:14px;height:14px;clip-path:polygon(100% 0,100% 100%,0 100%);background:var(--mindmap-node-foreground,var(--text));opacity:.15;pointer-events:none}
+.mindmap-node[data-node-style=capsule]{border-radius:48px;padding-left:26px;padding-right:26px}
+.mindmap-node[data-node-style=capsule] .mindmap-file{top:12px;right:16px}
+.mindmap-node[data-node-style=double]{border-width:3px;border-style:double;border-radius:8px}

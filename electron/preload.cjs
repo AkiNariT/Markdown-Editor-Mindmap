@@ -1,0 +1,26 @@
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const invoke = (name, ...args) => ipcRenderer.invoke('moye:' + name, ...args);
+const listen = (name, callback) => { const handler = (_, value) => callback(value); ipcRenderer.on('moye:' + name, handler); return () => ipcRenderer.removeListener('moye:' + name, handler); };
+contextBridge.exposeInMainWorld('moye', {
+  getSettings: () => invoke('get-settings'), setLanguage: language => invoke('set-language', language),
+  ready: () => invoke('ready'), sessionReady: () => invoke('session-ready'), open: () => invoke('open'),
+  checkpoint: value => invoke('checkpoint', value),
+  openTemplate: () => invoke('template'),
+  activateTab: id => invoke('activate', id), closeTab: id => invoke('close-tab', id),
+  openDropped: file => invoke('drop', webUtils.getPathForFile(file)),
+  newDocument: () => invoke('new'), save: (content, as, sourceSafe = false) => invoke('save', content, Boolean(as), Boolean(sourceSafe)),
+  newMindmap: () => invoke('new-mindmap'),
+  chooseMindmapFile: () => invoke('mindmap-choose-file'),
+  createMindmapFile: (id, content, nodeId) => invoke('mindmap-create-file', id, content, nodeId),
+  openMindmapFile: (id, content, nodeId, created = false) => invoke('mindmap-open-file', id, content, nodeId, Boolean(created)),
+  renameDocument: (id, name) => invoke('rename', id, name),
+  cacheSource: (id, content) => invoke('preview', id, content),
+  insertImage: () => invoke('image'), confirmEdit: (sourceMode = false) => invoke('edit', Boolean(sourceMode)),
+  setDirty: (id, value, visualLossy = false) => ipcRenderer.send('moye:dirty', id, Boolean(value), Boolean(visualLossy)),
+  openLink: url => invoke('link', url),
+  respondContent: (id, content, error, sourceSafe = false) => ipcRenderer.send('moye:content', { id, content, error, sourceSafe: Boolean(sourceSafe) }),
+  respondCloseState: (id, documents, error, state = {}) => ipcRenderer.send('moye:close-state', { id, documents, error, activeId: state.activeId }),
+  onRequestCloseState: fn => listen('request-close-state', fn), onClosingCanceled: fn => listen('closing-canceled', fn),
+  onRequestContent: fn => listen('request-content', fn),
+  onDocument: fn => listen('document', fn), onSaved: fn => listen('saved', fn), onClosed: fn => listen('closed', fn), onCommand: fn => listen('command', fn),
+});

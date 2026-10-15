@@ -1,0 +1,73 @@
+.mindmap-view{display:flex;flex-direction:column;flex:1;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;background:var(--bg);color:var(--text)}
+.mindmap-view [hidden]{display:none!important}
+.mindmap-toolbar{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));flex-shrink:0;gap:6px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--paper)}
+.mindmap-readonly .mindmap-toolbar{display:flex;justify-content:flex-end;gap:6px;padding:6px 20px}
+.mindmap-readonly .mindmap-tool{height:30px;padding:4px 12px}
+.mindmap-tool{display:flex;align-items:center;justify-content:center;min-width:0;height:34px;padding:6px 3px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:12px;white-space:nowrap;cursor:pointer}
+.mindmap-tool:hover:not(:disabled),.mindmap-confirm-button:hover:not(:disabled),.mindmap-color-reset:hover:not(:disabled){background:color-mix(in srgb,var(--text) 6%,transparent)}
+.mindmap-view button:focus-visible,.mindmap-text-input:focus-visible,.mindmap-color-input:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.mindmap-view button:disabled{opacity:.38;cursor:default}
+.mindmap-editor-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;flex-shrink:0;min-width:0;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--paper)}
+.mindmap-text-label{display:flex;align-items:center;gap:12px;flex:1;min-width:150px;color:var(--muted);font-size:11px;white-space:nowrap}
+.mindmap-text-input{display:block;flex:1;min-width:0;width:100%;height:32px;padding:5px 9px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;outline:none}
+.mindmap-text-input[readonly]{border-color:transparent;background:transparent;cursor:default}
+.mindmap-color-controls{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.mindmap-color-label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;white-space:nowrap}
+.mindmap-color-input{display:block;width:30px;height:28px;padding:3px;border:1px solid var(--border);border-radius:5px;background:var(--bg);cursor:pointer}
+.mindmap-color-input:disabled{opacity:.38;cursor:default}
+.mindmap-background-input{display:block;width:30px;height:28px;padding:3px;border:1px solid var(--border);border-radius:5px;background:var(--bg);cursor:pointer}
+.mindmap-background-input:disabled,.mindmap-style-select:disabled{opacity:.38;cursor:default}
+.mindmap-style-label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;white-space:nowrap}
+.mindmap-style-select{max-width:130px;height:28px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:11px}
+.mindmap-connection-editor{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:0;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--paper)}
+.mindmap-connection-field{display:flex;align-items:center;gap:12px;min-width:0;flex:1;font-size:11px;color:var(--muted);white-space:nowrap}
+.mindmap-connection-input{flex:1;min-width:0;height:32px;padding:5px 9px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:13px}
+.mindmap-connection-input[readonly]{border-color:transparent;background:transparent}
+.mindmap-clear-connection{flex-shrink:0;padding:6px 9px;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:11px;cursor:pointer}
+.mindmap-connection-labels{position:absolute;inset:0;pointer-events:none}
+.mindmap-connection-label{position:absolute;transform:translate(-50%,-50%);width:max-content;max-width:200px;box-sizing:border-box;padding:4px 9px;border:1px solid var(--border);border-radius:12px;background:var(--paper);color:var(--text);font:inherit;font-size:12px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:auto;cursor:pointer;box-shadow:0 1px 5px #0001}
+.mindmap-connection-label-selected{border-color:var(--text);box-shadow:0 0 0 1px var(--text)}
+.mindmap-color-reset{height:28px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:11px;white-space:nowrap;cursor:pointer}
+.mindmap-selection-detail{max-width:30%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--muted);font-size:11px}
+.mindmap-confirm{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;flex-shrink:0;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--paper);font-size:12px}
+.mindmap-confirm[hidden]{display:none}
+.mindmap-confirm>span{flex:1;min-width:150px;overflow-wrap:anywhere}
+.mindmap-confirm-button{padding:7px 11px;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:12px;cursor:pointer}
+.mindmap-canvas{position:relative;flex:1;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;overflow-anchor:none;outline:none;cursor:grab;touch-action:none;background:var(--bg)}
+.mindmap-canvas:focus-visible{box-shadow:inset 0 0 0 1px var(--border)}
+.mindmap-canvas.mindmap-panning{cursor:grabbing;user-select:none}
+.mindmap-stage{position:relative;min-width:100%;min-height:100%;isolation:isolate}
+.mindmap-world{position:absolute;left:0;top:0;transform-origin:0 0}
+.mindmap-lines{position:absolute;left:0;top:0;width:100%;height:100%;max-width:none;overflow:visible;pointer-events:none}
+.mindmap-lines path{fill:none;stroke:var(--muted);stroke-width:1.5;opacity:.45}
+.mindmap-lines .mindmap-connection{stroke:var(--text);stroke-width:2;stroke-dasharray:7 5;opacity:.65}
+.mindmap-lines .mindmap-connection-selected{stroke-width:3.5;opacity:1;filter:drop-shadow(0 0 3px color-mix(in srgb,var(--text) 30%,transparent))}
+.mindmap-lines .mindmap-connection-hit{stroke:transparent;stroke-width:16;pointer-events:stroke;cursor:pointer;opacity:1}
+.mindmap-lines .mindmap-connection-leader{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 3;opacity:.65;pointer-events:none}
+.mindmap-nodes{position:absolute;inset:0;pointer-events:none}
+.mindmap-node{position:absolute;display:flex;flex-direction:column;width:216px;height:96px;padding:0 14px 10px;border:1px solid var(--border);border-radius:8px;background:var(--paper);pointer-events:auto;box-sizing:border-box;cursor:default;transition:border-color .12s}
+.mindmap-node.mindmap-root{border-width:1.5px}
+.mindmap-node.mindmap-selected{border-color:var(--text);box-shadow:0 0 0 1px var(--text)}
+.mindmap-view:not(.mindmap-readonly):not(.mindmap-locked) .mindmap-node,.mindmap-view:not(.mindmap-readonly):not(.mindmap-locked) .mindmap-node-button{cursor:grab}
+.mindmap-dragging .mindmap-canvas,.mindmap-dragging .mindmap-node,.mindmap-dragging .mindmap-node-button{cursor:grabbing!important;user-select:none}
+.mindmap-connecting .mindmap-node,.mindmap-connecting .mindmap-node-button{cursor:crosshair!important}
+.mindmap-node.mindmap-connection-source{outline:2px dashed var(--text);outline-offset:5px}
+.mindmap-locked .mindmap-canvas,.mindmap-locked .mindmap-connection-hit{cursor:default;pointer-events:none}
+.mindmap-node-button{display:flex;align-items:center;justify-content:flex-start;flex:1;width:100%;min-height:0;padding:8px 0 4px;border:0;border-radius:0;background:transparent;color:var(--text);font:inherit;font-size:13px;line-height:1.5;text-align:left;cursor:pointer;overflow:hidden}
+.mindmap-node-button:hover{background:transparent}
+.mindmap-node-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;white-space:pre-wrap}
+.mindmap-root .mindmap-node-title{font-weight:600}
+.mindmap-linked .mindmap-node-button{padding-right:22px}
+.mindmap-file{position:absolute;top:7px;right:7px;display:flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--muted);font:inherit;font-size:16px;line-height:1;cursor:pointer}
+.mindmap-file:hover{color:var(--text);background:color-mix(in srgb,var(--text) 10%,transparent)}
+.mindmap-fold{position:absolute;right:-14px;top:34px;display:flex;align-items:center;justify-content:center;min-width:25px;height:25px;padding:0 5px;border:1px solid var(--border);border-radius:20px;background:var(--paper);color:var(--muted);font:inherit;font-size:11px;cursor:pointer}
+.mindmap-fold:hover{background:var(--paper);color:var(--text);border-color:var(--text)}
+.mindmap-hint{flex-shrink:0;padding:7px 20px;border-top:1px solid var(--border);color:var(--muted);background:var(--paper);font-size:10px;line-height:1.5;text-align:center;user-select:none}
+.mindmap-context-menu{position:fixed;z-index:1200;display:flex;flex-direction:column;min-width:180px;max-width:min(280px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;padding:5px;border:1px solid var(--border);border-radius:8px;background:var(--paper);color:var(--text);box-shadow:0 8px 32px #0002;font-size:12px;cursor:default}
+.mindmap-menu-header{padding:6px 9px 8px;border-bottom:1px solid var(--border);margin-bottom:4px;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mindmap-menu-item{display:block;width:100%;flex-shrink:0;padding:7px 10px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit;text-align:left;white-space:nowrap;cursor:pointer}
+.mindmap-menu-item:hover:not(:disabled),.mindmap-menu-item:focus-visible{background:color-mix(in srgb,var(--text) 8%,transparent)}
+.dark .mindmap-view,.dark .mindmap-canvas{background:#000}
+@container document (max-width:860px){.mindmap-toolbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:8px 16px}.mindmap-editor-row{padding:8px 20px;gap:10px}}
+@media(max-width:950px){.mindmap-toolbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:8px 16px}.mindmap-editor-row{padding:8px 20px;gap:10px}}
+@media(max-width:520px){.mindmap-toolbar{padding:8px 10px}.mindmap-tool{font-size:11px}.mindmap-selection-detail{display:none}.mindmap-editor-row{padding:8px 14px}.mindmap-hint{font-size:9px;padding:6px 8px}}
