@@ -4,7 +4,11 @@
 
 极简的 Markdown 桌面阅读与编辑器。直接编辑排版后的文字，也可以查看源码、双向对照，并用思维导图连接本地 Markdown 文件。
 
-[English](README.en.md) · [下载 0.1.21](https://github.com/AkiNariT/MD/releases/tag/v0.1.21) · [更新记录](CHANGELOG.md) · [使用说明](README.txt)
+[English](README.en.md) · [下载 0.1.21](https://github.com/AkiNariT/MD/releases/tag/v0.1.21) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
+
+## 开发方式
+
+本项目主要借助 **AI 编程工具（包括 OpenAI Codex）** 进行代码编写、调试和文档整理。功能方向、设计取舍与公开发布由维护者决定。AI 生成的代码同样需要验证，实际完成的检查和已知局限以 [验证记录](docs/VALIDATION-0.1.21.md) 为准。
 
 ## 下载与运行
 
@@ -15,6 +19,8 @@
 3. 升级时，先保存并正常退出旧版，再打开新版。同一用户配置只运行一个实例。
 
 适配目标是 **Windows 10 / 11 x64**；已进行 Windows 11 x64 桌面测试，尚未在独立 Windows 10 机器验证。当前是 **0.1.21 公开预览版**，便携包未签名，不含安装器或自动更新。下载包与 SHA256 校验清单均在 [Releases](https://github.com/AkiNariT/MD/releases)。
+
+**macOS 版本已列入后续开发计划，目前尚未发布 Mac 下载包。** 后续会继续优化现有功能，并进行 macOS 适配与实机验证；支持的系统版本、芯片架构和发布日期将在确认后公布，见 [开发计划](ROADMAP.md)。
 
 ## 功能
 

@@ -1,5 +1,11 @@
 # 项目声明 / Project notices
 
+## AI 辅助开发
+
+本项目主要借助 AI 编程工具（包括 OpenAI Codex）完成代码编写、调试和文档整理。维护者决定功能方向、设计取舍和版本发布。AI 生成的内容仍需要测试与维护；开发方式本身不构成正确性保证，已经完成的检查以验证记录为准。
+
+AI 工具用于软件开发过程。当前 MD 应用不内置在线 AI 模型调用；文档数据的处理方式见 [隐私说明](PRIVACY.md)。
+
 ## 许可证与第三方软件
 
 MD 源码使用仓库内的 [MIT License](LICENSE)，以该许可证原文为准，保留原有版权声明。第三方组件的许可证独立适用，见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。便携包根目录的 LICENSE 和 LICENSES.chromium.html 属于运行时；项目自身许可证也位于 resources/app/LICENSE。
@@ -17,3 +23,7 @@ MD 源码使用仓库内的 [MIT License](LICENSE)，以该许可证原文为准
 可视化编辑可能标准化 Markdown 标记；某些扩展语法不能完整显示或编辑。思维导图不嵌入关联 Markdown 文件。新建文件后撤销节点关联，不会删除磁盘文件。新版导图字段可能需要新版程序读取。
 
 后续升级会通过版本标签、更新记录和 Releases 提供。当前没有自动更新或固定支持期限承诺。
+
+## 后续开发计划
+
+项目计划继续优化现有体验与稳定性，并开发 macOS 版本。目前仅提供 Windows x64 下载包；macOS 尚未发布，最低系统版本、芯片架构和发布时间须在适配与实机验证后确认。计划与进展见 [ROADMAP.md](ROADMAP.md)。
