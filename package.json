@@ -36,13 +36,13 @@
   },
   "license": "MIT",
   "author": "MD contributors",
-  "homepage": "https://github.com/AkiNariT/MD",
+  "homepage": "https://github.com/AkiNariT/MD-Editor-Mindmap",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AkiNariT/MD.git"
+    "url": "https://github.com/AkiNariT/MD-Editor-Mindmap.git"
   },
   "bugs": {
-    "url": "https://github.com/AkiNariT/MD/issues"
+    "url": "https://github.com/AkiNariT/MD-Editor-Mindmap/issues"
   },
   "keywords": ["markdown", "editor", "mindmap", "electron", "windows"],
   "dependencies": {

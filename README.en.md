@@ -1,8 +1,8 @@
-# MD — Minimal Markdown Reader, Editor & Mindmaps
+# MD Editor & Mindmap（Markdown 可视化编辑与思维导图）
 
-A minimal desktop Markdown reader and editor with visual editing, source/split views, and mindmaps linked to local Markdown files.
+MD Editor & Mindmap (MD) is a minimal desktop Markdown reader and editor with visual editing, source/split views, and mindmaps linked to local Markdown files.
 
-[简体中文](README.md) · [Download 0.1.21](https://github.com/AkiNariT/MD/releases/tag/v0.1.21) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
+[简体中文](README.md) · [Download 0.1.21](https://github.com/AkiNariT/MD-Editor-Mindmap/releases/tag/v0.1.21) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
 ## Development approach
 
@@ -10,11 +10,11 @@ This project is developed primarily with **AI tools**.
 
 ## Download
 
-**[Windows x64 portable ZIP](https://github.com/AkiNariT/MD/releases/download/v0.1.21/MD-Windows-x64-0.1.21.zip)**
+**[Windows x64 portable ZIP](https://github.com/AkiNariT/MD-Editor-Mindmap/releases/download/v0.1.21/MD-Windows-x64-0.1.21.zip)**
 
 Extract the whole archive and run `MD.exe`. Keep the application folder intact. Save your work and close the previous version before upgrading. Node.js is not required to use the download.
 
-Version **0.1.21 is a public preview**. Windows 10/11 x64 are the targets; desktop validation was performed on Windows 11 x64. A separate Windows 10 machine was not tested. The portable build is unsigned and has no installer or automatic updater. Checksums are provided with each [release](https://github.com/AkiNariT/MD/releases).
+Version **0.1.21 is a public preview**. Windows 10/11 x64 are the targets; desktop validation was performed on Windows 11 x64. A separate Windows 10 machine was not tested. The portable build is unsigned and has no installer or automatic updater. Checksums are provided with each [release](https://github.com/AkiNariT/MD-Editor-Mindmap/releases).
 
 **A macOS version is planned; no Mac download is currently available.** Work will continue on the existing features alongside macOS adaptation and testing on Mac hardware. Supported macOS versions, chip architectures and a release date will be announced after validation. See the [roadmap](ROADMAP.md).
 

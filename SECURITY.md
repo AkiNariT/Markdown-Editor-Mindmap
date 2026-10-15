@@ -6,7 +6,7 @@
 
 ## 报告方式
 
-优先使用本仓库 **Security → Report a vulnerability** 的私下漏洞报告入口。若该入口不可用，请先通过 [Issue](https://github.com/AkiNariT/MD/issues) 请求维护者提供私下联系方式，只说明需要安全沟通，不公开漏洞细节、利用代码、私人文档或访问凭据。
+优先使用本仓库 **Security → Report a vulnerability** 的私下漏洞报告入口。若该入口不可用，请先通过 [Issue](https://github.com/AkiNariT/MD-Editor-Mindmap/issues) 请求维护者提供私下联系方式，只说明需要安全沟通，不公开漏洞细节、利用代码、私人文档或访问凭据。
 
 报告尽量包含版本、Windows 版本、触发条件、影响范围、最小复现和可行的临时规避方式。使用不含私人信息的样例。普通功能问题可直接提交公开 Issue。
 
