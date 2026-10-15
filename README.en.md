@@ -6,7 +6,7 @@ A minimal desktop Markdown reader and editor with visual editing, source/split v
 
 ## Development approach
 
-This project is developed primarily with **AI coding tools, including OpenAI Codex**, for implementation, debugging and documentation. The maintainer decides the product direction, design choices and public releases. AI-generated code still requires verification; completed checks and known limitations are documented in the [validation record](docs/VALIDATION-0.1.21.md).
+This project is developed primarily with **AI tools**.
 
 ## Download
 
