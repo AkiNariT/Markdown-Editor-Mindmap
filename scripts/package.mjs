@@ -15,7 +15,7 @@ for (const name of ['index.html', 'electron/preload.cjs', 'src/files.mjs', 'dist
 // Bundle every library, while leaving Electron and built-in Node APIs external.
 await build({ entryPoints: ['electron/main.cjs'], bundle: true, outfile: path.join(stage, 'electron/main.cjs'), platform: 'node', format: 'cjs', external: ['electron'], target: 'node24', legalComments: 'eof' });
 // Keep one locale instance across separately bundled main-process modules.
-for (const name of ['i18n', 'settings', 'document', 'images', 'mindmap', 'mindmap-files', 'mindmap-create', 'recovery', 'window-state', 'open-queue']) await build({ entryPoints: [`src/${name}.mjs`], bundle: true, outfile: path.join(stage, `src/${name}.mjs`), platform: 'node', format: 'esm', target: 'node24', external: ['./i18n.mjs'], legalComments: 'eof',
+for (const name of ['i18n', 'settings', 'updates', 'document', 'images', 'mindmap', 'mindmap-files', 'mindmap-create', 'recovery', 'window-state', 'open-queue']) await build({ entryPoints: [`src/${name}.mjs`], bundle: true, outfile: path.join(stage, `src/${name}.mjs`), platform: 'node', format: 'esm', target: 'node24', external: ['./i18n.mjs'], legalComments: 'eof',
   banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" }, });
 const sourceMetadata = JSON.parse(await readFile('package.json', 'utf8'));
 await writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'moye', productName: 'MD', version: sourceMetadata.version, main: 'electron/main.cjs', type: 'module', description: '极简 Markdown 阅读与可视化编辑器', author: 'MD', license: 'MIT' }, null, 2));

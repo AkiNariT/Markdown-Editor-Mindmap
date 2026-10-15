@@ -9,10 +9,12 @@ import { createMindmapView } from './mindmap-view.js';
 import { parseMindmap, serializeMindmap } from './mindmap.mjs';
 import { captureReadingPosition, restoreReadingPosition } from './zoom.mjs';
 import { createCheckpointController } from './checkpoint.mjs';
+import { createUpdatesUI } from './updates-ui.js';
 import { t, setLocale, getLocale, onLocaleChange } from './i18n.mjs';
 
 const $ = id => document.getElementById(id);
 const api = window.moye;
+const updates = createUpdatesUI({ api, t, document });
 let editor, current, baseline = '', baselineMetadata = '', documentParts, dirty = false, editing = false, working = false, closing = false, loaded = false, toastTimer;
 let linkSelection;
 let namingId;
@@ -40,6 +42,7 @@ function refreshLanguage() {
   const anchor = loaded && state && !state.map && viewMode !== 'source' ? captureReadingPosition(canvas) : null;
   const sourcePosition = state?.source ? { top: state.source.input.scrollTop, left: state.source.input.scrollLeft } : null;
   applyStaticTranslations();
+  updates.refreshLanguage();
   $('theme-label').textContent = t(document.body.classList.contains('dark') ? '浅色外观' : '黑色外观');
   $('toast').hidden = true;
   if (!loaded || !state) return;
@@ -137,7 +140,7 @@ function setInputPermissions() {
   if (state?.source) state.source.input.readOnly = !editing || working || closing;
   state?.map?.setLocked?.(working || closing);
   state?.map?.setEditable(editing);
-  for (const id of ['open', 'new', 'save', 'save-as', 'mode', 'skill-template', 'zoom-out', 'zoom-reset', 'zoom-in', 'rename', 'name-confirm', 'name-cancel', 'new-mindmap', 'settings']) $(id).disabled = working || closing;
+  for (const id of ['open', 'new', 'save', 'save-as', 'mode', 'skill-template', 'zoom-out', 'zoom-reset', 'zoom-in', 'rename', 'name-confirm', 'name-cancel', 'new-mindmap', 'settings', 'check-updates', 'settings-check-updates']) $(id).disabled = working || closing;
   $('filename').readOnly = working || closing;
   for (const button of $('view-switch').querySelectorAll('button')) button.disabled = working || closing;
   $('sync-scroll').disabled = working || closing;
@@ -683,6 +686,14 @@ $('about').addEventListener('click', () => { hideMenus(); $('help-dialog').showM
 $('settings').addEventListener('click', () => {
   if (working || closing || document.querySelector('dialog[open]')) return;
   hideMenus(); $('settings-error').hidden = true; $('language-select').value = getLocale(); $('settings-dialog').showModal();
+});
+$('check-updates').addEventListener('click', () => {
+  if (working || closing || document.querySelector('dialog[open]')) return;
+  hideMenus(); updates.open();
+});
+$('settings-check-updates').addEventListener('click', () => {
+  if (working || closing) return;
+  $('settings-dialog').close(); updates.open();
 });
 $('language-select').addEventListener('change', async () => {
   const select = $('language-select'); if (changingLanguage || closing) { select.value = getLocale(); return; }

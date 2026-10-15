@@ -1,4 +1,11 @@
 export default {
+  '无法连接 GitHub，请检查网络后重试。': 'Could not connect to GitHub. Check your connection and try again.',
+  '检查更新超时，请稍后重试。': 'The update check timed out. Please try again later.',
+  'GitHub 请求暂时受限，请稍后重试或打开官方下载页。': 'GitHub is limiting requests. Try again later or open the official download page.',
+  '更新信息格式无效，请稍后重试或打开官方下载页。': 'The update information is invalid. Try again later or open the official download page.',
+  'GitHub 暂时无法提供更新信息，请稍后重试。': 'GitHub could not provide update information. Please try again later.',
+  '检查更新失败，请稍后重试。': 'Could not check for updates. Please try again later.',
+  '无法打开官方下载页，请检查默认浏览器设置。': 'Could not open the official download page. Check your default browser settings.',
   '节点文字无效。': 'The node text is invalid.',
   '请选择有效的 Markdown 文件位置。': 'Choose a valid location for the Markdown file.',
   '这个位置已存在文件，请选择新名称。': 'A file already exists at this location. Choose a new name.',

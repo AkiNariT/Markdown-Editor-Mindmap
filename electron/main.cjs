@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, screen, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { randomUUID } = require('node:crypto');
@@ -9,7 +9,7 @@ const dataArg = process.argv.find(arg => arg.startsWith('--user-data-dir='));
 if (dataArg) app.setPath('userData', dataArg.slice('--user-data-dir='.length));
 let win, files, helpers, imageHelpers, mindmap, mindmapFiles, mindmapCreate, recovery, recoveryStore, windowState, windowStore, openQueue, openArguments, doc, closing = false, busy = false;
 let recoveryNotice = null, rendererReady = false, openingInitial = false, windowSaveTimer, lastWindowState, correctingWindow = false;
-let t = message => message, getLocale = () => 'zh-CN', setLocale, settingsStore;
+let t = message => message, getLocale = () => 'zh-CN', setLocale, settingsStore, updateChecker;
 const pendingOpenRequests = [{ argv: process.argv, cwd: process.cwd() }];
 let checkpointInProgress = false, closeAfterCheckpoint = false;
 let checkpointFinished = Promise.resolve();
@@ -290,7 +290,7 @@ function correctWindowPlacement() {
 function handle(name, callback) {
   ipcMain.handle('moye:' + name, async (event, ...args) => {
     if (!authorized(event)) return { error: t('操作来源无效。') };
-    const serialized = !['get-settings', 'ready', 'session-ready', 'link', 'preview'].includes(name);
+    const serialized = !['get-settings', 'get-app-info', 'check-update', 'open-release-page', 'ready', 'session-ready', 'link', 'preview'].includes(name);
     if (serialized && name !== 'checkpoint' && checkpointInProgress) await checkpointFinished;
     if (busy && serialized) return { error: t('正在处理文档，请稍后重试。') };
     if (serialized) busy = true;
@@ -326,6 +326,8 @@ if (ownsProfile) app.whenReady().then(async () => {
   const settings = await import(pathToFileURL(path.join(root, 'src/settings.mjs')).href);
   settingsStore = settings.createSettingsStore(app.getPath('userData'));
   setLocale((await settingsStore.load()).language);
+  const updates = await import(pathToFileURL(path.join(root, 'src/updates.mjs')).href);
+  updateChecker = updates.createUpdateChecker({ currentVersion: app.getVersion(), fetchImpl: (url, options) => net.fetch(url, options) });
   files = await import(pathToFileURL(path.join(root, 'src/files.mjs')).href);
   helpers = await import(pathToFileURL(path.join(root, 'src/document.mjs')).href);
   imageHelpers = await import(pathToFileURL(path.join(root, 'src/images.mjs')).href);
@@ -355,6 +357,24 @@ if (ownsProfile) app.whenReady().then(async () => {
   openingInitial = true; await openQueue.drain(); openingInitial = false;
   if (!documents.size) setDocument({ path: null, content: welcome(), fingerprint: null }, false, false);
   handle('get-settings', () => ({ language: getLocale() }));
+  handle('get-app-info', () => ({ version: app.getVersion() }));
+  handle('check-update', async () => {
+    try { return await updateChecker.check(); }
+    catch (error) {
+      const messages = {
+        UPDATE_NETWORK: t('无法连接 GitHub，请检查网络后重试。'),
+        UPDATE_TIMEOUT: t('检查更新超时，请稍后重试。'),
+        UPDATE_RATE_LIMIT: t('GitHub 请求暂时受限，请稍后重试或打开官方下载页。'),
+        UPDATE_RESPONSE: t('更新信息格式无效，请稍后重试或打开官方下载页。'),
+        UPDATE_HTTP: t('GitHub 暂时无法提供更新信息，请稍后重试。'),
+      };
+      throw new Error(messages[error.message] || t('检查更新失败，请稍后重试。'));
+    }
+  });
+  handle('open-release-page', async () => {
+    try { await shell.openExternal(updateChecker.getReleaseUrl()); return { ok: true }; }
+    catch { throw new Error(t('无法打开官方下载页，请检查默认浏览器设置。')); }
+  });
   handle('set-language', async language => {
     const saved = await settingsStore.setLanguage(language);
     setLocale(saved.language);

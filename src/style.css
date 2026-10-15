@@ -104,6 +104,25 @@
 @media(max-width:760px){.document-label{max-width:130px;min-width:60px}.topbar{gap:5px}.brand-mark{width:28px;height:28px}#new-mindmap{padding:0 6px}.right-actions .separator{display:none}}
 dialog{max-width:calc(100vw - 32px);max-height:calc(100vh - 48px);overflow-y:auto}
 #settings-dialog{width:380px}
+.settings-actions{justify-content:space-between}
+#update-dialog{width:560px;overflow-wrap:anywhere}
+#update-dialog .dialog-heading{margin-bottom:12px}
+.update-current{display:flex;align-items:baseline;gap:12px;margin:0;font-size:12px;color:var(--muted)}
+.update-current strong{color:var(--text);font-weight:500}
+#update-note{margin:10px 0 16px}
+#update-status{margin:0;min-height:25px}
+#update-release{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.update-release-heading{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+#update-release-version{font-size:16px;font-weight:600}
+#update-prerelease{padding:1px 7px;border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--muted)}
+#update-release-name{margin:3px 0 12px;color:var(--muted);font-size:12px}
+#update-notes-heading{font-size:12px;font-weight:500;margin:12px 0 6px}
+#update-release-notes{max-height:30vh;overflow-y:auto;overscroll-behavior:contain;padding:12px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);white-space:pre-wrap;line-height:1.8;font-size:12px}
+#update-release-notes:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.update-actions{flex-wrap:wrap;gap:7px}
+.update-actions button{white-space:normal}
+#update-download{margin-right:auto}
+@media(max-width:760px){#update-dialog{padding:22px}.update-actions button{padding:8px 12px}}
 #language-select{display:block;width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-top:7px}
 #language-select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 html[lang=en] .aside-heading,html[lang=en] .page-bar{letter-spacing:.3px}

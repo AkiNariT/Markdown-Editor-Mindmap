@@ -1,7 +1,7 @@
 {
   "name": "moye",
   "productName": "MD",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "极简 Markdown 阅读与可视化编辑器",
   "main": "electron/main.cjs",
   "type": "module",
@@ -32,6 +32,7 @@
     "test:windows": "node tests/windows.electron.cjs",
     "test:windows-dpi": "node tests/windows-dpi.cjs",
     "test:language": "node tests/language.cjs",
+    "test:updates": "node tests/updates.cjs",
     "test:mindmap-features": "node tests/mindmap-features.cjs"
   },
   "license": "MIT",

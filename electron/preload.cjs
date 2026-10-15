@@ -3,6 +3,7 @@ const invoke = (name, ...args) => ipcRenderer.invoke('moye:' + name, ...args);
 const listen = (name, callback) => { const handler = (_, value) => callback(value); ipcRenderer.on('moye:' + name, handler); return () => ipcRenderer.removeListener('moye:' + name, handler); };
 contextBridge.exposeInMainWorld('moye', {
   getSettings: () => invoke('get-settings'), setLanguage: language => invoke('set-language', language),
+  getAppInfo: () => invoke('get-app-info'), checkUpdate: () => invoke('check-update'), openReleasePage: () => invoke('open-release-page'),
   ready: () => invoke('ready'), sessionReady: () => invoke('session-ready'), open: () => invoke('open'),
   checkpoint: value => invoke('checkpoint', value),
   openTemplate: () => invoke('template'),
