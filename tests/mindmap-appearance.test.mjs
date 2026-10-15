@@ -17,14 +17,14 @@ const luminance = hex => {
 test('appearance applies safe normalized styles without mutating a node or changing geometry', async t => {
   const { applyNodeAppearance } = await helper(); const { card } = makeCard(t);
   card.style.cssText = 'left:12px;top:34px;width:216px;height:96px';
-  const input = Object.freeze({ background: '#AABBCC', style: 'note', color: '#FF0000' });
+  const input = Object.freeze({ background: '#AABBCC', style: 'rounded', color: '#FF0000' });
   applyNodeAppearance(card, input);
-  assert.equal(card.dataset.nodeStyle, 'note'); assert.equal(card.dataset.nodeBackground, '#aabbcc');
+  assert.equal(card.dataset.nodeStyle, 'rounded'); assert.equal(card.dataset.nodeBackground, '#aabbcc');
   assert.equal(card.style.getPropertyValue('--mindmap-node-background'), '#aabbcc');
   assert.equal(card.style.getPropertyValue('--mindmap-node-text'), '#ff0000');
   assert.equal(card.style.getPropertyValue('--mindmap-node-foreground'), '#000000');
   assert.deepEqual([card.style.left, card.style.top, card.style.width, card.style.height], ['12px', '34px', '216px', '96px']);
-  assert.deepEqual(input, { background: '#AABBCC', style: 'note', color: '#FF0000' });
+  assert.deepEqual(input, { background: '#AABBCC', style: 'rounded', color: '#FF0000' });
 });
 
 test('custom backgrounds select a black or white default foreground with readable contrast', async t => {
@@ -54,7 +54,7 @@ test('resetting or rejecting appearance clears stale styling while retaining unr
   }
 });
 
-test('all five styles retain the actual base card dimensions and absent styling retains the legacy appearance', async t => {
+test('retained shapes keep the base dimensions, retired shapes use classic, and absent styling retains the legacy appearance', async t => {
   const { applyNodeAppearance } = await helper(); const { dom, card } = makeCard(t);
   const style = dom.window.document.createElement('style');
   style.textContent = await readFile(new URL('../src/mindmap.css', import.meta.url), 'utf8'); dom.window.document.head.append(style);
@@ -65,10 +65,13 @@ test('all five styles retain the actual base card dimensions and absent styling 
   const unchanged = dom.window.getComputedStyle(card);
   assert.deepEqual({ width: unchanged.width, height: unchanged.height, radius: unchanged.borderRadius, border: unchanged.borderStyle }, legacy);
   const radii = new Set();
-  for (const appearance of ['plain', 'rounded', 'note', 'capsule', 'double']) {
+  for (const appearance of ['plain', 'rounded', 'capsule']) {
     applyNodeAppearance(card, { style: appearance }); const computed = dom.window.getComputedStyle(card);
     assert.equal(computed.width, '216px'); assert.equal(computed.height, '96px'); radii.add(computed.borderRadius);
-    if (appearance === 'double') assert.equal(computed.borderStyle, 'double');
   }
   assert.ok(radii.size >= 3, 'the shape choices visibly differ');
+  for (const appearance of ['note', 'double']) {
+    applyNodeAppearance(card, { style: appearance }); assert.equal(card.dataset.nodeStyle, undefined);
+    assert.equal(dom.window.getComputedStyle(card).borderRadius, legacy.radius);
+  }
 });

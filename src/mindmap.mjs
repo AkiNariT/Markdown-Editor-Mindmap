@@ -1,4 +1,5 @@
 import { t } from './i18n.mjs';
+import { mapThemes } from './mindmap-themes.mjs';
 
 const controlCharacters = /[\x00-\x1f\x7f-\x9f]/;
 const labelLineBreaks = /[\u2028\u2029]/;
@@ -21,7 +22,8 @@ export function createMindmap() {
 
 export function validateMindmap(value) {
   if (!isRecord(value) || value.format !== 'md-mindmap') throw new Error(t('不是有效的 MD 思维导图文件。'));
-  if (![1, 2, 3, 4].includes(value.version)) throw new Error(t('暂不支持这个思维导图版本。'));
+  if (![1, 2, 3, 4, 5].includes(value.version)) throw new Error(t('暂不支持这个思维导图版本。'));
+  if (Object.hasOwn(value, 'theme') && (value.version < 5 || !mapThemes.includes(value.theme))) throw new Error(t('整图风格无效，需要使用第 5 版格式与支持的风格。'));
   if (value.version >= 2 && (!Array.isArray(value.connections) || value.connections.length > 2000)) throw new Error(t('思维导图连接数据无效，最多支持 2000 条关系线。'));
   if (value.version === 1 && Object.hasOwn(value, 'connections')) throw new Error(t('节点连接需要使用新版思维导图格式。'));
   if (!validId(value.root) || !Array.isArray(value.nodes) || !value.nodes.length || value.nodes.length > 1000) throw new Error(t('思维导图必须有根节点，且最多支持 1000 个节点。'));
@@ -76,7 +78,7 @@ export function validateMindmap(value) {
     }
     ids.add(edge.id); pairs.add(pair); return normalized;
   });
-  return { format: 'md-mindmap', version: value.version, root: value.root, nodes, ...(value.version >= 2 ? { connections } : {}) };
+  return { format: 'md-mindmap', version: value.version, root: value.root, nodes, ...(value.version >= 2 ? { connections } : {}), ...(Object.hasOwn(value, 'theme') ? { theme: value.theme } : {}) };
 }
 
 export function parseMindmap(text) {

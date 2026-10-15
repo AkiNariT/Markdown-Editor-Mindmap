@@ -165,22 +165,17 @@ test('canceled, failed, stale and protected new-file actions do not change the m
   dbl(node(stale.view)); const snapshot = stale.view.getText(); stale.close(); finish('C:/orphan.md'); await tick(); assert.equal(stale.view.getText(), snapshot);
 });
 
-test('background and node style have independent undo, v4 persistence and readonly protection', () => {
+test('palette and whole-map style retain independent undo and English labels', () => {
   const f = setup(), { view } = f;
   try {
-    node(view).click(); const background = view.host.querySelector('[aria-label="节点背景颜色"]'), style = view.host.querySelector('[aria-label="节点样式"]');
-    assert.ok(background); assert.ok(style); assert.deepEqual([...style.options].map(option => option.value), ['plain', 'rounded', 'note', 'capsule', 'double']);
-    background.value = '#334455'; background.dispatchEvent(new dom.window.Event('input', { bubbles: true })); assert.equal(f.changes.length, 0);
-    background.dispatchEvent(new dom.window.Event('change', { bubbles: true })); assert.equal(view.getData().version, 4); assert.equal(view.getData().nodes[1].background, '#334455');
-    style.value = 'capsule'; style.dispatchEvent(new dom.window.Event('change', { bubbles: true })); assert.equal(view.getData().nodes[1].style, 'capsule');
-    const card = node(view).closest('.mindmap-node'); assert.equal(card.dataset.nodeStyle, 'capsule');
-    assert.equal(card.style.getPropertyValue('--mindmap-node-background'), '#334455');
-    const textColor = view.host.querySelector('[aria-label="节点文字颜色"]'); textColor.value = '#778899'; textColor.dispatchEvent(new dom.window.Event('change', { bubbles: true })); assert.equal(view.getData().version, 4); assert.equal(view.getData().nodes[1].style, 'capsule');
-    view.undo(); view.undo(); assert.equal(view.getData().nodes[1].style, undefined); assert.equal(view.getData().nodes[1].background, '#334455'); view.redo();
-    const before = view.getText(); view.setEditable(false); assert.equal(background.disabled, true); assert.equal(style.disabled, true); style.value = 'double'; style.dispatchEvent(new dom.window.Event('change', { bubbles: true })); assert.equal(view.getText(), before);
-    view.setEditable(true); button(view, '默认背景').click(); assert.equal(view.getData().nodes[1].background, undefined); assert.equal(view.getData().nodes[1].style, 'capsule');
-    view.undo(); assert.equal(view.getData().nodes[1].background, '#334455'); view.refreshTheme(); assert.equal(node(view).closest('.mindmap-node').dataset.nodeStyle, 'capsule');
-    setLocale('en'); assert.equal(style.getAttribute('aria-label'), 'Node style'); assert.equal(style.value, 'capsule');
-    assert.deepEqual(f.errors, []);
+    node(view).click(); const swatch = view.host.querySelector('[data-palette=blue]'), style = view.host.querySelector('[aria-label="整图风格"]');
+    swatch.click(); const painted = view.getData(); style.value = 'capsule'; style.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.equal(view.getData().theme, 'capsule'); assert.equal(view.getData().version, 5);
+    view.undo(); assert.deepEqual(view.getData(), painted); view.redo();
+    const before = view.getText(); view.setEditable(false); assert.equal(swatch.disabled, true); assert.equal(style.disabled, true);
+    style.value = 'vine'; style.dispatchEvent(new dom.window.Event('change', { bubbles: true })); assert.equal(view.getText(), before);
+    view.setEditable(true); view.refreshTheme(); assert.equal(view.host.dataset.mapTheme, 'capsule');
+    setLocale('en'); assert.equal(style.getAttribute('aria-label'), 'Map style'); assert.equal(style.value, 'capsule');
+    assert.equal(swatch.getAttribute('aria-label'), 'Palette: Blue'); assert.deepEqual(f.errors, []);
   } finally { f.close(); }
 });

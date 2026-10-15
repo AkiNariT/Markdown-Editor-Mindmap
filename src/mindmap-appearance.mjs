@@ -1,4 +1,4 @@
-const styles = new Set(['plain', 'rounded', 'note', 'capsule', 'double']);
+const styles = new Set(['plain', 'rounded', 'capsule']);
 const safeColor = value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : null;
 
 function foregroundFor(background) {

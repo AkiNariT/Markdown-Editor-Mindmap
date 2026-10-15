@@ -105,7 +105,7 @@ test('invalid or unversioned colors are rejected instead of discarded or interpr
   }
   for (const version of [1, 2]) assert.throws(() => validateMindmap({ ...map([node('root', null, { color: '#123456' })]), version, ...(version === 2 ? { connections: [] } : {}) }));
   assert.throws(() => validateMindmap({ ...map(), version: 3 }), 'v3 requires connections to protect relation data');
-  assert.throws(() => validateMindmap({ ...map(), version: 5, connections: [] }));
+  assert.throws(() => validateMindmap({ ...map(), version: 6, connections: [] }));
 });
 
 test('version 4 preserves backgrounds, every supported style and labeled relations without sharing data', async () => {

@@ -4,6 +4,8 @@ Markdown-Editor-Mindmap (MD) is a minimal desktop Markdown reader and editor wit
 
 [简体中文](README.md) · [Download 0.1.21](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.21) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
+**0.1.22 in development:** Fixed color palettes and Branches, Vines and Crystal map styles. The public download remains 0.1.21. Whole-map styles use map format v5 and require 0.1.22 or later.
+
 ## Development approach
 
 This project is developed primarily with **AI tools**.
@@ -23,13 +25,13 @@ Version **0.1.21 is a public preview**. Windows 10/11 x64 are the targets; deskt
 - Read and edit formatted Markdown, including headings, lists, tasks, quotes, tables, images and highlighted code blocks.
 - Edit source and formatted content together in Split view, with shared undo/redo.
 - Keep multiple documents, individual reading positions, zoom and unsaved changes.
-- Create mindmap nodes, drag branches, add labeled relationships, set colors and choose five card styles.
+- Create mindmap nodes, drag branches, add labeled relationships, apply fixed palettes and choose six whole-map styles.
 - Link nodes to Markdown files; double-click an unlinked node to create and open a file.
 - Recover local drafts and session state. Original files still require Save.
 - Switch between Chinese/English and light/black appearance; zoom with Ctrl+mouse wheel.
 - Create documents from the included Chinese/English SKILL templates, preserving YAML frontmatter.
 
-Mindmap backgrounds, card styles and relationship labels use map format **v4**, requiring MD 0.1.21 or later. Existing v1/v2/v3 maps still open. Keep linked Markdown files and their relative directory structure when sharing maps.
+Fixed palettes and relationship labels use map format **v4**. Whole-map styles use **v5**, requiring MD 0.1.22 or later. Existing v1 through v4 maps still open; old colors are preserved and retired Note/Double border shapes display as Classic. Keep linked Markdown files and their relative directory structure when sharing maps.
 
 ## Privacy and license
 

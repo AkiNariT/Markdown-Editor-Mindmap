@@ -6,9 +6,34 @@
 .mindmap-node[data-node-background].mindmap-selected{border-color:var(--mindmap-node-foreground);box-shadow:0 0 0 2px var(--text)}
 .mindmap-node[data-node-style=plain]{border-radius:8px}
 .mindmap-node[data-node-style=rounded]{border-radius:20px}
-.mindmap-node[data-node-style=note]{border-radius:3px;padding-left:17px}
-.mindmap-node[data-node-style=note]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 2px 2px 0;background:var(--mindmap-node-foreground,var(--text));opacity:.25;pointer-events:none}
-.mindmap-node[data-node-style=note]::after{content:"";position:absolute;right:0;bottom:0;width:14px;height:14px;clip-path:polygon(100% 0,100% 100%,0 100%);background:var(--mindmap-node-foreground,var(--text));opacity:.15;pointer-events:none}
 .mindmap-node[data-node-style=capsule]{border-radius:48px;padding-left:26px;padding-right:26px}
 .mindmap-node[data-node-style=capsule] .mindmap-file{top:12px;right:16px}
-.mindmap-node[data-node-style=double]{border-width:3px;border-style:double;border-radius:8px}
+
+/* Map themes change paint, never the boxes used for dragging and routing. */
+.mindmap-view[data-map-theme=tree]{--map-paper:#f3eadc;--map-ink:#4b3827;--map-accent:#8b6948}
+.mindmap-view[data-map-theme=vine]{--map-paper:#e7f1e5;--map-ink:#294c35;--map-accent:#648968}
+.mindmap-view[data-map-theme=crystal]{--map-paper:#eae6f6;--map-ink:#44345e;--map-accent:#8c75b1}
+.dark .mindmap-view[data-map-theme=tree]{--map-paper:#29231b;--map-ink:#eddbc2;--map-accent:#bfa077}
+.dark .mindmap-view[data-map-theme=vine]{--map-paper:#162a20;--map-ink:#d1e9d5;--map-accent:#81b690}
+.dark .mindmap-view[data-map-theme=crystal]{--map-paper:#252032;--map-ink:#e5dbf5;--map-accent:#b19ad5}
+.mindmap-explicit-theme[data-map-theme=classic] .mindmap-node{border-radius:8px;padding-left:14px;padding-right:14px}
+.mindmap-view[data-map-theme=rounded] .mindmap-node{border-radius:22px;padding-left:20px;padding-right:20px}
+.mindmap-view[data-map-theme=capsule] .mindmap-node{border-radius:48px;padding-left:26px;padding-right:26px}
+.mindmap-view[data-map-theme=capsule] .mindmap-file{top:12px;right:16px}
+.mindmap-explicit-theme[data-map-theme=classic] .mindmap-file,.mindmap-view[data-map-theme=rounded] .mindmap-file{top:7px;right:7px}
+.mindmap-view:is([data-map-theme=tree],[data-map-theme=vine],[data-map-theme=crystal]) .mindmap-node{border:0;border-radius:0;background:transparent;box-shadow:none;padding-left:27px;padding-right:27px}
+.mindmap-view[data-map-theme=tree] .mindmap-node{padding-left:28px}
+.mindmap-view[data-map-theme=vine] .mindmap-node{padding-left:31px;padding-right:30px}
+.mindmap-node-art{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.mindmap-node-outline{fill:var(--mindmap-node-background,var(--map-paper,var(--paper)));stroke:var(--mindmap-node-foreground,var(--map-accent,var(--border)));stroke-width:1.3;stroke-linejoin:round}
+.mindmap-node-detail{fill:none;stroke:var(--mindmap-node-foreground,var(--map-accent,var(--border)));stroke-width:1;opacity:.35;stroke-linecap:round;stroke-linejoin:round}
+.mindmap-node .mindmap-node-button{position:relative;color:var(--mindmap-node-foreground,var(--map-ink,var(--text)))}
+.mindmap-view:is([data-map-theme=tree],[data-map-theme=vine],[data-map-theme=crystal]) .mindmap-file{top:11px;right:20px;color:var(--mindmap-node-foreground,var(--map-ink))}
+.mindmap-node.mindmap-selected .mindmap-node-outline{stroke:var(--mindmap-node-foreground,var(--map-ink,var(--text)));stroke-width:2.5}
+.mindmap-node.mindmap-connection-source .mindmap-node-outline{stroke-dasharray:5 3}
+.mindmap-view .mindmap-branch{stroke:var(--map-accent,var(--muted));stroke-linecap:round;stroke-linejoin:round}
+.mindmap-view[data-map-theme=tree] .mindmap-branch{opacity:.8}
+.mindmap-view[data-map-theme=vine] .mindmap-branch{stroke-width:2.4;opacity:.85}
+.mindmap-view[data-map-theme=crystal] .mindmap-branch{stroke-width:2;opacity:.8;stroke-linejoin:bevel}
+.mindmap-lines .mindmap-vine-leaf{fill:var(--map-paper);stroke:var(--map-accent);stroke-width:1.2;opacity:1}
+.mindmap-view:is([data-map-theme=tree],[data-map-theme=vine],[data-map-theme=crystal]) .mindmap-connection{stroke:var(--map-ink)}

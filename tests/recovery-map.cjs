@@ -59,8 +59,8 @@ const assert = require('node:assert/strict');
     await button('编辑').click(); await idle(); await linked().click();
     await page.getByRole('textbox', { name: '节点文字', exact: true }).fill('崩溃后恢复的节点');
     await page.getByRole('textbox', { name: '节点文字', exact: true }).blur();
-    // Native picker commit is represented by its renderer change event.
-    await page.getByLabel('节点文字颜色', { exact: true }).evaluate(input => { input.value = '#c03a59'; input.dispatchEvent(new Event('change', { bubbles: true })); });
+    // Fixed palette applies text and background atomically.
+    await page.locator('[data-palette=pink]').click();
     const before = await positions(), rect = await linked().boundingBox();
     await page.mouse.move(rect.x + 60, rect.y + 30); await page.mouse.down();
     await page.mouse.move(rect.x + 145, rect.y + 65, { steps: 8 }); await page.mouse.up();
@@ -91,7 +91,7 @@ const assert = require('node:assert/strict');
     const saved = await waitSession(value => {
       const record = value.documents?.find(item => item.path === file); if (!record?.draft) return false;
       const draft = JSON.parse(record.draft), linkedNode = draft.nodes.find(item => item.id === 'linked');
-      return record.dirty && linkedNode.text === '崩溃后恢复的节点' && linkedNode.color === '#c03a59'
+      return record.dirty && linkedNode.text === '崩溃后恢复的节点' && linkedNode.color === '#713d54'
         && linkedNode.offset?.x === 85 && linkedNode.offset?.y === 35 && draft.connections?.length === 1
         && record.viewState?.editing === true && record.viewState.zoom === 120 && record.viewState.map?.selected === 'linked'
         && Math.abs(record.viewState.map.position.left - savedPosition.left) < 2 && Math.abs(record.viewState.map.position.top - savedPosition.top) < 2
@@ -106,7 +106,7 @@ const assert = require('node:assert/strict');
     await launch(); await active('恢复脑图.mdmap');
     assert.equal(await page.getByRole('tab').count(), 1);
     assert.equal(await linked().locator('.mindmap-node-title').textContent(), '崩溃后恢复的节点');
-    assert.equal(await linked().locator('.mindmap-node-title').evaluate(element => getComputedStyle(element).color), 'rgb(192, 58, 89)');
+    assert.equal(await linked().locator('.mindmap-node-title').evaluate(element => getComputedStyle(element).color), 'rgb(113, 61, 84)');
     const restoredLayout = await positions();
     assert.equal(await page.locator('[data-connection-line]').count(), 1);
     assert.equal(await page.locator('#zoom-reset').textContent(), '120%');
@@ -156,7 +156,7 @@ const assert = require('node:assert/strict');
     assert.equal(await readFile(note, 'utf8'), noteContent);
     assert.deepEqual(restoredLayout, savedLayout, '脑图手动布局与子节点位置在相同缩放下完整恢复');
     assert.deepEqual(errors, []);
-    console.log('RECOVERY MAP PASS: process interruption, unsaved node text/color/offset/connection, original baseline, selected node, editing state, zoom, canvas pan across two hidden-tab checkpoints and star/title/card opening. Native picker commit event is simulated.');
+    console.log('RECOVERY MAP PASS: process interruption, unsaved node text/palette/offset/connection, original baseline, selected node, editing state, zoom, canvas pan across two hidden-tab checkpoints and star/title/card opening.');
     console.log(JSON.stringify({ profile, editScreenshot, readScreenshot, savedPosition, restoredPosition }));
   } catch (error) {
     if (page && !page.isClosed()) {

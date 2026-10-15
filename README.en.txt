@@ -1,4 +1,4 @@
-MD 0.1.21 — A minimal Markdown reader and visual editor
+MD 0.1.22 — A minimal Markdown reader and visual editor
 
 Run MD.exe. Keep the portable application folder intact. When updating, close the old version normally and save any changes you want to keep before opening the new executable.
 
@@ -10,9 +10,9 @@ Click Edit to write directly in the formatted document. The formatting bar provi
 
 Use Document, Source and Split view to choose your view. In Split view, both source and formatted text can be edited; changes and undo history are shared. Narrow windows stack the two panes. Sync scrolling can be turned off. Ctrl+mouse wheel changes document zoom from 50% to 200%; Ctrl+0 restores 100%.
 
-Mindmaps: create a map, add child or sibling topics, then link a node to a local Markdown file. A linked node shows a star; click the star or double-click the node to open the file. In Edit mode, drag nodes, change text colors, or right-click to connect nodes. Drag the background to pan. Save maps as .mdmap files. Existing v1/v2 maps can still be read; custom colors require MD 0.1.16 or newer.
+Mindmaps: create a map, add child or sibling topics, then link a node to a local Markdown file. A linked node shows a star; click the star or double-click the node to open the file. In Edit mode, drag nodes, apply a fixed palette, or right-click to connect nodes. Drag the background to pan. Save maps as .mdmap files. Existing v1/v2 maps can still be read; custom colors require MD 0.1.16 or newer.
 
-Map details: Select a dashed line to add a description. Labels avoid cards and other labels, with a thin leader when moved aside. Double-click the line or its label to edit it. With the canvas focused in Edit mode, F2 edits the selected node text or connection description; use the top document name to rename the map. Node backgrounds and styles (Classic, Rounded, Note, Capsule, Double border) are available in Edit mode. These properties require map format v4 and MD 0.1.21 or later; older maps still open.
+Map details: Select a dashed line to add a description. Labels avoid cards and other labels, with a thin leader when moved aside. Double-click the line or its label to edit it. With the canvas focused in Edit mode, F2 edits the selected node text or connection description; use the top document name to rename the map. Fixed palettes set background and text colors together. Default restores appearance-based colors. Map styles (Classic, Rounded, Capsule, Branches, Vines, Crystal) change nodes and branches across the entire map. Whole-map styles require format v5 and MD 0.1.22 or later. Maps in formats v1 through v4 still open; existing colors are preserved and retired Note/Double border shapes display as Classic.
 
 Double-click an unlinked node to create a new Markdown file. Choose its location; the file is linked and opened for editing. Existing files are never overwritten. Canceling changes nothing. Undoing the association retains the file on disk.
 

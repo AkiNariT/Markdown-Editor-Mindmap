@@ -1,6 +1,7 @@
 import { t, onLocaleChange } from './i18n.mjs';
 import { validateMindmap, serializeMindmap } from './mindmap.mjs';
 import { applyNodeAppearance } from './mindmap-appearance.mjs';
+import { nodePalettes, createNodeArtwork, crystalBranch } from './mindmap-themes.mjs';
 
 const NODE_WIDTH = 216, NODE_HEIGHT = 96, COLUMN_GAP = 76, ROW_GAP = 24;
 const clone = value => ({ ...value,
@@ -27,24 +28,24 @@ export function createMindmapView(initialData, options = {}) {
   const label = document.createElement('label'); label.className = 'mindmap-text-label'; label.textContent = t('节点');
   const input = document.createElement('input'); input.className = 'mindmap-text-input'; input.setAttribute('aria-label', t('节点文字')); input.maxLength = 500; input.spellcheck = false; input.autocomplete = 'off';
   label.append(input);
-  const colorControls = document.createElement('div'); colorControls.className = 'mindmap-color-controls';
-  const colorLabel = document.createElement('label'); colorLabel.className = 'mindmap-color-label'; colorLabel.textContent = t('文字颜色');
-  const colorInput = document.createElement('input'); colorInput.type = 'color'; colorInput.className = 'mindmap-color-input'; colorInput.setAttribute('aria-label', t('节点文字颜色'));
-  colorLabel.append(colorInput);
-  const resetColorButton = makeButton('默认颜色', () => setColor(), 'mindmap-color-reset');
-  colorControls.append(colorLabel, resetColorButton);
-  const backgroundControls = document.createElement('div'); backgroundControls.className = 'mindmap-color-controls';
-  const backgroundLabel = document.createElement('label'); backgroundLabel.className = 'mindmap-color-label'; backgroundLabel.textContent = t('背景颜色');
-  const backgroundInput = document.createElement('input'); backgroundInput.type = 'color'; backgroundInput.className = 'mindmap-background-input'; backgroundInput.setAttribute('aria-label', t('节点背景颜色')); backgroundLabel.append(backgroundInput);
-  const resetBackgroundButton = makeButton('默认背景', () => setBackground(), 'mindmap-color-reset'); backgroundControls.append(backgroundLabel, resetBackgroundButton);
-  const styleLabel = document.createElement('label'); styleLabel.className = 'mindmap-style-label'; styleLabel.textContent = t('样式');
-  const styleInput = document.createElement('select'); styleInput.className = 'mindmap-style-select'; styleInput.setAttribute('aria-label', t('节点样式'));
-  for (const [value, text] of [['plain', '经典'], ['rounded', '圆角'], ['note', '便签'], ['capsule', '胶囊'], ['double', '双线']]) {
-    const option = document.createElement('option'); option.value = value; option.dataset.mindmapLabel = text; option.textContent = t(text); styleInput.append(option);
+  const paletteControls = document.createElement('div'); paletteControls.className = 'mindmap-palette-controls'; paletteControls.setAttribute('role', 'group'); paletteControls.setAttribute('aria-label', t('节点配色'));
+  const paletteLabel = document.createElement('span'); paletteLabel.className = 'mindmap-palette-label'; paletteLabel.textContent = t('配色'); paletteControls.append(paletteLabel);
+  const paletteButtons = new Map();
+  for (const palette of nodePalettes) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'mindmap-palette'; button.dataset.palette = palette.id;
+    button.textContent = palette.id === 'default' ? '◐' : 'A';
+    const name = t('配色：{name}', { name: t(palette.label) }); button.title = name; button.setAttribute('aria-label', name);
+    if (palette.background) { button.style.setProperty('--swatch-background', palette.background); button.style.setProperty('--swatch-color', palette.color); }
+    button.addEventListener('click', () => setPalette(palette)); paletteButtons.set(palette.id, button); paletteControls.append(button);
   }
-  styleLabel.append(styleInput);
+  const themeLabel = document.createElement('label'); themeLabel.className = 'mindmap-style-label'; themeLabel.textContent = t('整图风格');
+  const themeInput = document.createElement('select'); themeInput.className = 'mindmap-theme-select'; themeInput.setAttribute('aria-label', t('整图风格'));
+  for (const [value, text] of [['classic', '经典'], ['rounded', '圆角'], ['capsule', '胶囊'], ['tree', '树枝'], ['vine', '藤蔓'], ['crystal', '晶体']]) {
+    const option = document.createElement('option'); option.value = value; option.dataset.mindmapLabel = text; option.textContent = t(text); themeInput.append(option);
+  }
+  themeLabel.append(themeInput);
   const detail = document.createElement('span'); detail.className = 'mindmap-selection-detail';
-  editorRow.append(label, colorControls, backgroundControls, styleLabel, detail);
+  editorRow.append(label, paletteControls, themeLabel, detail);
   const connectionRow = document.createElement('div'); connectionRow.className = 'mindmap-connection-editor'; connectionRow.hidden = true;
   const connectionLabel = document.createElement('label'); connectionLabel.className = 'mindmap-connection-field'; connectionLabel.textContent = t('连接说明');
   const connectionInput = document.createElement('input'); connectionInput.className = 'mindmap-connection-input'; connectionInput.maxLength = 200; connectionInput.autocomplete = 'off'; connectionInput.spellcheck = false;
@@ -271,33 +272,23 @@ export function createMindmapView(initialData, options = {}) {
     if (!editable || locked || composing || destroyed) return;
     finishText(); connectionInput.value = ''; applyConnectionLabel(); finishText(); connectionInput.focus({ preventScroll: true });
   }
-  function setColor(value) {
+  function setPalette(palette) {
     mutate(draft => {
       const current = draft.nodes.find(item => item.id === selected);
-      if (value) { draft.version = Math.max(draft.version, 3); draft.connections ||= []; current.color = value; }
-      else delete current.color;
+      if (palette.background) {
+        draft.version = Math.max(draft.version, 4); draft.connections ||= [];
+        current.background = palette.background; current.color = palette.color;
+      } else { delete current.background; delete current.color; }
     });
     renderSelection();
   }
-  function setBackground(value) {
+  function setTheme(value) {
     mutate(draft => {
-      const current = draft.nodes.find(item => item.id === selected);
-      if (value) { draft.version = Math.max(draft.version, 4); draft.connections ||= []; current.background = value; }
-      else delete current.background;
+      draft.version = Math.max(draft.version, 5); draft.connections ||= []; draft.theme = value;
     });
     renderSelection();
   }
-  function setStyle(value) {
-    mutate(draft => {
-      const current = draft.nodes.find(item => item.id === selected);
-      if (value !== 'plain') { draft.version = Math.max(draft.version, 4); draft.connections ||= []; current.style = value; }
-      else delete current.style;
-    });
-    renderSelection();
-  }
-  colorInput.addEventListener('change', () => setColor(colorInput.value));
-  backgroundInput.addEventListener('change', () => setBackground(backgroundInput.value));
-  styleInput.addEventListener('change', () => setStyle(styleInput.value));
+  themeInput.addEventListener('change', () => setTheme(themeInput.value));
   connectionInput.addEventListener('input', event => { if (!event.isComposing) applyConnectionLabel(); });
   connectionInput.addEventListener('compositionstart', () => { finishText(); composing = true; renderSelection(); });
   connectionInput.addEventListener('compositionend', () => { composing = false; applyConnectionLabel(); finishText(); renderSelection(); });
@@ -341,18 +332,17 @@ export function createMindmapView(initialData, options = {}) {
     openButton.hidden = !editable && !current.file;
     input.readOnly = !editable || locked;
     if (!composing && input.value !== current.text) input.value = current.text;
-    const themeColor = document.defaultView.getComputedStyle(host).color.match(/^rgba?\(\s*(\d+)[, ]+\s*(\d+)[, ]+\s*(\d+)/);
-    colorInput.value = current.color || (themeColor ? `#${themeColor.slice(1, 4).map(channel => Number(channel).toString(16).padStart(2, '0')).join('')}` : '#000000');
-    colorInput.title = current.color || t('默认颜色（跟随主题）');
-    colorInput.disabled = !editable || locked || composing;
-    resetColorButton.disabled = !editable || locked || composing || !current.color;
-    const appearance = nodeElements.get(selected)?.card;
-    const backgroundColor = appearance ? document.defaultView.getComputedStyle(appearance).backgroundColor.match(/^rgba?\(\s*(\d+)[, ]+\s*(\d+)[, ]+\s*(\d+)/) : null;
-    backgroundInput.value = current.background || (backgroundColor ? `#${backgroundColor.slice(1, 4).map(channel => Number(channel).toString(16).padStart(2, '0')).join('')}` : '#ffffff');
-    backgroundInput.title = current.background || t('默认背景（跟随主题）');
-    backgroundInput.disabled = styleInput.disabled = !editable || locked || composing;
-    resetBackgroundButton.disabled = !editable || locked || composing || !current.background;
-    styleInput.value = current.style || 'plain';
+    for (const palette of nodePalettes) {
+      const button = paletteButtons.get(palette.id); button.disabled = !editable || locked || composing;
+      button.setAttribute('aria-pressed', String(palette.background ? current.background === palette.background && current.color === palette.color : !current.background && !current.color));
+    }
+    const legacyShapes = !Object.hasOwn(data, 'theme') && data.nodes.some(item => ['rounded', 'capsule'].includes(item.style));
+    let legacyOption = themeInput.querySelector('[value=legacy]');
+    if (legacyShapes && !legacyOption) {
+      legacyOption = document.createElement('option'); legacyOption.value = 'legacy'; legacyOption.disabled = true;
+      legacyOption.dataset.mindmapLabel = '原有样式'; legacyOption.textContent = t('原有样式'); themeInput.prepend(legacyOption);
+    } else if (!legacyShapes) legacyOption?.remove();
+    themeInput.disabled = !editable || locked || composing; themeInput.value = legacyShapes ? 'legacy' : data.theme || 'classic';
     detail.textContent = current.file ? fileName(current.file) : ''; detail.title = current.file || ''; detail.hidden = !current.file;
     childButton.disabled = !editable || locked; siblingButton.disabled = !editable || locked || current.parent === null;
     deleteButton.disabled = !editable || locked || current.id === data.root;
@@ -440,12 +430,25 @@ export function createMindmapView(initialData, options = {}) {
   function renderLines() {
     lines.replaceChildren(); connectionLabels.replaceChildren();
     const labels = [];
+    const byId = new Map(data.nodes.map(item => [item.id, item]));
     for (const item of data.nodes) {
       const position = positions.get(item.id); if (!position) continue;
       if (item.parent !== null) {
         const parent = positions.get(item.parent);
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', curveBetween(parent, position)); lines.append(path);
+        path.classList.add('mindmap-branch');
+        path.setAttribute('d', data.theme === 'crystal' ? crystalBranch(parent, position) : curveBetween(parent, position));
+        if (data.theme === 'tree') {
+          let depth = 0, ancestor = item;
+          while (ancestor.parent !== null) { depth++; ancestor = byId.get(ancestor.parent); }
+          path.style.strokeWidth = String(Math.max(1.6, 5 - depth * .65));
+        }
+        lines.append(path);
+        if (data.theme === 'vine' && position.x - parent.x > NODE_WIDTH + 38) {
+          const leaf = document.createElementNS(lines.namespaceURI, 'path'); leaf.classList.add('mindmap-vine-leaf');
+          const x = position.x - 21, y = position.y + NODE_HEIGHT / 2;
+          leaf.setAttribute('d', `M ${x} ${y} Q ${x - 15} ${y - 3} ${x - 10} ${y - 16} Q ${x + 3} ${y - 13} ${x} ${y} Z`); lines.append(leaf);
+        }
       }
     }
     for (const connection of data.connections || []) {
@@ -557,11 +560,14 @@ export function createMindmapView(initialData, options = {}) {
   }
   function render() {
     const activeNode = document.activeElement?.getAttribute('data-node-id');
+    host.dataset.mapTheme = data.theme || 'classic';
+    host.classList.toggle('mindmap-explicit-theme', Object.hasOwn(data, 'theme'));
     const children = measureTree(); sizeStage(); renderLines(); nodesLayer.replaceChildren(); nodeElements.clear();
     for (const item of data.nodes) {
       const position = positions.get(item.id); if (!position) continue;
       const card = document.createElement('div'); card.className = 'mindmap-node';
       applyNodeAppearance(card, item);
+      const artwork = createNodeArtwork(document, data.theme); if (artwork) card.append(artwork);
       card.dataset.nodeCard = item.id;
       card.classList.toggle('mindmap-root', item.id === data.root); card.style.left = `${position.x}px`; card.style.top = `${position.y}px`;
       const button = document.createElement('button'); button.type = 'button'; button.className = 'mindmap-node-button'; button.dataset.nodeId = item.id;
@@ -833,11 +839,12 @@ export function createMindmapView(initialData, options = {}) {
     host.setAttribute('aria-label', t('思维导图'));
     toolbar.setAttribute('aria-label', t('思维导图工具'));
     label.firstChild.nodeValue = t('节点'); input.setAttribute('aria-label', t('节点文字'));
-    colorLabel.firstChild.nodeValue = t('文字颜色'); colorInput.setAttribute('aria-label', t('节点文字颜色'));
-    colorInput.title = node(selected).color || t('默认颜色（跟随主题）');
-    backgroundLabel.firstChild.nodeValue = t('背景颜色'); backgroundInput.setAttribute('aria-label', t('节点背景颜色'));
-    backgroundInput.title = node(selected).background || t('默认背景（跟随主题）');
-    styleLabel.firstChild.nodeValue = t('样式'); styleInput.setAttribute('aria-label', t('节点样式'));
+    paletteLabel.textContent = t('配色'); paletteControls.setAttribute('aria-label', t('节点配色'));
+    for (const palette of nodePalettes) {
+      const button = paletteButtons.get(palette.id), name = t('配色：{name}', { name: t(palette.label) });
+      button.title = name; button.setAttribute('aria-label', name);
+    }
+    themeLabel.firstChild.nodeValue = t('整图风格'); themeInput.setAttribute('aria-label', t('整图风格'));
     connectionLabel.firstChild.nodeValue = t('连接说明'); connectionInput.setAttribute('aria-label', t('连接说明')); connectionInput.placeholder = t('为这条连接添加说明…');
     confirmation.setAttribute('aria-label', t('删除主题确认'));
     canvas.setAttribute('aria-label', t('思维导图画布'));

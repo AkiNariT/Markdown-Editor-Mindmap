@@ -20,7 +20,6 @@ const assert = require('node:assert/strict');
   const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const button = name => page.getByRole('button', { name, exact: true });
   const card = id => page.locator('[data-node-card="' + id + '"]');
-  const chooseColor = (selector, color) => page.locator(selector).evaluate((input, color) => { input.value = color; input.dispatchEvent(new Event('change', { bubbles: true })); }, color);
   const save = async () => { await page.locator('#save').click(); await idle(); await page.waitForFunction(() => document.querySelector('#dirty-dot').hidden); };
   const stored = target => readFile(target, 'utf8').then(JSON.parse);
   const labelClear = async () => {
@@ -44,19 +43,14 @@ const assert = require('node:assert/strict');
     await start([mapFile]); const mapId = (await page.evaluate(() => window.moye.ready())).id;
     const back = async () => { await page.evaluate(id => window.moye.activateTab(id), mapId); await page.waitForSelector('[data-node-id=root]'); await idle(); };
     await button('编辑').click(); await idle();
-    assert.equal(await page.locator('.mindmap-background-input').count(), 1, 'node background control is available');
-    for (const [id, style, background] of [['root','plain','#e2e8f0'],['a','rounded','#d9e9df'],['b','note','#fde68a'],['create','capsule','#1e3a5f'],['cancel','double','#e9d5ff']]) {
-      await page.locator('[data-node-id=' + id + ']').click();
-      await page.locator('.mindmap-style-select').selectOption(style); await chooseColor('.mindmap-background-input', background);
+    assert.equal(await page.locator('input[type=color]').count(), 0);
+    for (const [id, palette] of [['root','gray'],['a','green'],['b','orange'],['create','blue'],['cancel','purple']]) {
+      await page.locator('[data-node-id=' + id + ']').click(); await page.locator('[data-palette=' + palette + ']').click();
     }
-    await page.locator('[data-node-id=create]').click();
-    assert.equal(await card('create').locator('.mindmap-node-title').evaluate(node => getComputedStyle(node).color), 'rgb(255, 255, 255)');
-    await chooseColor('.mindmap-color-input', '#60a5fa');
-    assert.equal(await card('create').locator('.mindmap-node-title').evaluate(node => getComputedStyle(node).color), 'rgb(96, 165, 250)');
     await save(); let value = await stored(mapFile); assert.equal(value.version, 4);
-    assert.equal(value.nodes.find(node => node.id === 'b').style, 'note'); assert.equal(value.nodes.find(node => node.id === 'create').background, '#1e3a5f');
-    assert.equal(value.nodes.find(node => node.id === 'create').color, '#60a5fa');
-    console.log('PASS five styles, independent background/text colors, automatic contrast, v4 persistence without downgrade');
+    assert.equal(value.nodes.find(node => node.id === 'create').background, '#dbeafe');
+    assert.equal(value.nodes.find(node => node.id === 'create').color, '#1e3a5f');
+    console.log('PASS paired palettes and v4 persistence without downgrade');
 
     await selectLine(true);
     const input = page.locator('.mindmap-connection-input'); await input.fill('参考资料 → 实施依据'); await input.blur();
@@ -79,7 +73,7 @@ const assert = require('node:assert/strict');
     await labelClear();
     await page.locator('#zoom-in').click(); assert.equal(await label.textContent(), '参考资料 → 实施依据');
     await save(); value = await stored(mapFile); assert.equal(value.connections[0].label, '参考资料 → 实施依据');
-    assert.equal(value.nodes.find(node => node.id === 'a').style, 'rounded');
+    assert.equal(value.nodes.find(node => node.id === 'a').background, '#dcf0df');
     await button('阅读').click(); await idle();
     console.log('PASS relation description editing, clear/undo/redo, node drag and zoom tracking, saved v4 label');
 
@@ -125,23 +119,23 @@ const assert = require('node:assert/strict');
       await page.locator('[data-node-id=a]').click();
       await labelClear();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
-      for (const selector of ['.mindmap-background-input','.mindmap-style-select']) assert.ok(await page.locator(selector).evaluate(node => { const r = node.getBoundingClientRect(); const canvas = document.querySelector('.mindmap-canvas').getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.bottom <= canvas.top; }));
+      for (const selector of ['[data-palette=blue]','.mindmap-theme-select']) assert.ok(await page.locator(selector).evaluate(node => { const r = node.getBoundingClientRect(); const canvas = document.querySelector('.mindmap-canvas').getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.bottom <= canvas.top; }));
       if (width === 1180) { await button('居中').click(); await label.scrollIntoViewIfNeeded(); await settle(); await page.screenshot({ path: path.resolve(__dirname, '../.desktop-test/MD导图样式-0.1.21.png') }); }
     }
     await page.locator('#more-toggle').click(); await page.locator('#theme').click(); await settle();
-    assert.equal(await card('b').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(253, 230, 138)');
+    assert.equal(await card('b').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(255, 234, 213)');
     await page.screenshot({ path: path.resolve(__dirname, '../.desktop-test/MD导图黑色窄屏-0.1.21.png') });
     await page.locator('#more-toggle').click(); await page.locator('#settings').click(); await page.locator('#language-select').selectOption('en');
     await page.waitForFunction(() => document.documentElement.lang === 'en'); await page.keyboard.press('Escape');
-    assert.doesNotMatch((await page.locator('.mindmap-style-select option').allTextContents()).join(' '), /\p{Script=Han}/u);
+    assert.doesNotMatch((await page.locator('.mindmap-theme-select option').allTextContents()).join(' '), /\p{Script=Han}/u);
     await page.locator('[data-connection-label=edge]').dblclick(); await input.fill('Unsaved relation 草稿'); await input.blur();
-    await page.locator('[data-node-id=a]').click(); await chooseColor('.mindmap-background-input', '#164e63');
-    await until(async () => { try { return JSON.parse(await readFile(path.join(profile, 'session.json'), 'utf8')); } catch { return null; } }, value => value?.documents?.some(item => item.path === copy && item.draft?.includes('Unsaved relation 草稿') && item.draft.includes('#164e63')));
+    await page.locator('[data-node-id=a]').click(); await page.locator('[data-palette=brown]').click();
+    await until(async () => { try { return JSON.parse(await readFile(path.join(profile, 'session.json'), 'utf8')); } catch { return null; } }, value => value?.documents?.some(item => item.path === copy && item.draft?.includes('Unsaved relation 草稿') && item.draft.includes('#eadecf')));
     await destroy(); await start([]);
     assert.equal(await page.locator('[data-connection-label=edge]').textContent(), 'Unsaved relation 草稿');
-    assert.equal(await card('a').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(22, 78, 99)');
+    assert.equal(await card('a').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(234, 222, 207)');
     assert.equal(await page.locator('[data-open-node=create]').count(), 1);
-    await save(); value = await stored(copy); assert.equal(value.connections[0].label, 'Unsaved relation 草稿'); assert.equal(value.nodes.find(node => node.id === 'a').background, '#164e63');
+    await save(); value = await stored(copy); assert.equal(value.connections[0].label, 'Unsaved relation 草稿'); assert.equal(value.nodes.find(node => node.id === 'a').background, '#eadecf');
     assert.deepEqual(errors, []);
     console.log('PASS v4 save-as links, compact/dark appearance, English controls, restart recovery of unsaved labels and backgrounds');
   } finally { await destroy(); }

@@ -45,11 +45,9 @@ function context(view, id = null) {
 }
 function menuAction(view, action) { return view.host.querySelector(`[role="menu"] [data-action="${action}"]`); }
 
-function changeColor(view, value, type = 'change') {
-  const picker = view.host.querySelector('[aria-label="节点文字颜色"]');
-  assert.ok(picker, 'the selected node must expose a text color control');
-  picker.value = value; picker.dispatchEvent(new dom.window.Event(type, { bubbles: true }));
-  return picker;
+function choosePalette(view, value) {
+  const swatch = view.host.querySelector('[data-palette="' + value + '"]');
+  assert.ok(swatch, 'fixed palettes are directly available'); swatch.click(); return swatch;
 }
 
 test('reading exposes only relevant navigation controls and editing restores the full toolbar', () => {
@@ -70,7 +68,7 @@ test('reading exposes only relevant navigation controls and editing restores the
     assert.equal(view.host.querySelector('.mindmap-editor-row').hidden, false);
     assert.deepEqual(visibleTools(), ['子主题', '同级主题', '删除', '关联 Markdown', '打开文件', '取消关联', '折叠', '居中']);
     assert.equal(view.host.querySelector('[aria-label="节点文字"]').readOnly, false);
-    assert.equal(view.host.querySelector('[aria-label="节点文字颜色"]').disabled, false);
+    assert.equal(view.host.querySelector('[data-palette=blue]').disabled, false);
     assert.match(view.host.querySelector('.mindmap-hint').textContent, /拖动节点调整位置/);
     assert.equal(nodeButton(view, 'a').getAttribute('aria-pressed'), 'true');
     assert.deepEqual(data.nodes.map(item => point(view, item.id)), positions);
@@ -286,86 +284,52 @@ test('double-clicking a connection destination completes the link without openin
   } finally { fixture.close(); }
 });
 
-test('node color commits once, persists after saving, and restores theme color through undo and reset', () => {
-  const state = setup(); const { view } = state;
-  let reopened;
+test('palette commits once, persists after saving, and reset restores both automatic colors', () => {
+  const state = setup(), { view } = state; let reopened;
   try {
-    const picker = view.host.querySelector('[aria-label="节点文字颜色"]');
-    assert.ok(picker, 'text color must be directly available in the editor');
-    assert.equal(picker.type, 'color');
-    assert.match(picker.closest('label').textContent, /文字颜色/);
-    assert.equal(nodeButton(view, 'root').closest('.mindmap-node').style.getPropertyValue('--mindmap-node-text'), '');
-    assert.equal(button(view, '默认颜色').disabled, true);
-    changeColor(view, '#112233', 'input'); changeColor(view, '#224466', 'input');
-    assert.equal(state.changes.length, 0, 'native color previews cannot flood undo history');
-    assert.equal(view.getData().nodes[0].color, undefined);
-    changeColor(view, '#224466');
-    assert.equal(state.changes.length, 1);
-    assert.equal(view.getData().version, 3);
-    assert.deepEqual(view.getData().connections, []);
-    assert.equal(view.getData().nodes[0].color, '#224466');
-    assert.equal(nodeButton(view, 'root').closest('.mindmap-node').style.getPropertyValue('--mindmap-node-text'), '#224466');
-    const saved = JSON.parse(view.getText());
-    view.setSaved(saved);
-    reopened = setup(saved);
-    assert.equal(reopened.view.getData().nodes[0].color, '#224466');
-    assert.equal(reopened.view.host.querySelector('[aria-label="节点文字颜色"]').value, '#224466');
-    view.undo();
-    assert.equal(view.getData().nodes[0].color, undefined);
-    assert.equal(nodeButton(view, 'root').closest('.mindmap-node').style.getPropertyValue('--mindmap-node-text'), '');
-    assert.equal(view.undo(), false, 'one accepted color is one undo step');
-    view.redo();
-    button(view, '默认颜色').click();
-    assert.equal(view.getData().nodes[0].color, undefined, 'theme color is represented by an absent override');
-    assert.equal(nodeButton(view, 'root').closest('.mindmap-node').style.getPropertyValue('--mindmap-node-text'), '');
-    view.undo(); assert.equal(view.getData().nodes[0].color, '#224466');
-    view.redo(); assert.equal(view.getData().nodes[0].color, undefined);
-    assert.equal(state.errors.length, 0);
+    choosePalette(view, 'blue'); assert.equal(state.changes.length, 1);
+    const painted = view.getData(); assert.equal(painted.version, 4); assert.equal(painted.nodes[0].color, '#1e3a5f');
+    assert.equal(painted.nodes[0].background, '#dbeafe');
+    view.setSaved(JSON.parse(view.getText())); reopened = setup(JSON.parse(view.getText()));
+    assert.deepEqual(reopened.view.getData(), painted);
+    assert.equal(reopened.view.host.querySelector('[data-palette=blue]').getAttribute('aria-pressed'), 'true');
+    view.undo(); assert.equal(view.getData().nodes[0].color, undefined); assert.equal(view.undo(), false);
+    view.redo(); choosePalette(view, 'default'); assert.equal(view.getData().nodes[0].color, undefined); assert.equal(view.getData().nodes[0].background, undefined);
+    view.undo(); assert.deepEqual(view.getData(), painted); assert.deepEqual(state.errors, []);
   } finally { reopened?.close(); state.close(); }
 });
 
-test('color edits respect selection, read-only mode, locking and Chinese composition', () => {
-  const state = setup(branch()); const { view } = state;
+test('palette edits respect selection, read-only mode, locking and Chinese composition', () => {
+  const state = setup(branch()), { view } = state;
   try {
-    nodeButton(view, 'a').click(); changeColor(view, '#336699');
-    assert.equal(view.getData().nodes[0].color, undefined);
-    assert.equal(view.getData().nodes[1].color, '#336699');
-    const picker = view.host.querySelector('[aria-label="节点文字颜色"]');
+    nodeButton(view, 'a').click(); choosePalette(view, 'green'); const painted = view.getText();
+    assert.equal(view.getData().nodes[0].color, undefined); assert.equal(view.getData().nodes[1].color, '#244b35');
     for (const mode of ['readonly', 'locked', 'composition']) {
       const text = view.host.querySelector('[aria-label="节点文字"]');
       if (mode === 'readonly') view.setEditable(false);
       else if (mode === 'locked') view.setLocked(true);
       else text.dispatchEvent(new dom.window.CompositionEvent('compositionstart', { bubbles: true }));
-      assert.equal(picker.disabled, true, mode);
-      assert.equal(button(view, '默认颜色').disabled, true, mode);
-      changeColor(view, '#ff0000'); button(view, '默认颜色').click();
-      assert.equal(view.getData().nodes[1].color, '#336699', mode);
+      assert.equal(view.host.querySelector('[data-palette=blue]').disabled, true);
+      choosePalette(view, 'blue'); choosePalette(view, 'default'); assert.equal(view.getText(), painted);
       if (mode === 'readonly') view.setEditable(true);
       else if (mode === 'locked') view.setLocked(false);
       else text.dispatchEvent(new dom.window.CompositionEvent('compositionend', { bubbles: true }));
-      assert.equal(picker.disabled, false, mode);
-      assert.equal(picker.value, '#336699', mode);
     }
-    assert.equal(state.changes.length, 1);
-    view.undo(); assert.equal(view.getData().nodes[1].color, undefined);
+    assert.equal(state.changes.length, 1); view.undo(); assert.equal(view.getData().nodes[1].color, undefined);
   } finally { state.close(); }
 });
 
-test('dragging and connecting colored nodes preserve version three and their colors', () => {
-  const state = setup(branch()); const { view } = state;
+test('dragging and connecting preset nodes preserve both colors and version four', () => {
+  const state = setup(branch()), { view } = state;
   try {
-    nodeButton(view, 'a').click(); changeColor(view, '#224466');
+    nodeButton(view, 'a').click(); choosePalette(view, 'blue');
     startDrag(view, 'a'); moveDrag(view, 250, 230); moveDrag(view, 250, 230, 'pointerup');
-    assert.equal(view.getData().version, 3);
-    assert.deepEqual(view.getData().nodes[1].offset, { x: 50, y: 30 });
+    assert.equal(view.getData().version, 4); assert.deepEqual(view.getData().nodes[1].offset, { x: 50, y: 30 });
     context(view, 'a'); menuAction(view, 'connect').click(); nodeButton(view, 'root').click();
-    assert.equal(view.getData().version, 3);
-    assert.equal(view.getData().nodes[1].color, '#224466');
-    assert.equal(view.getData().connections.length, 1);
-    view.undo(); assert.equal(view.getData().nodes[1].color, '#224466');
-    view.undo(); assert.equal(view.getData().nodes[1].offset, undefined);
-    assert.equal(view.getData().nodes[1].color, '#224466');
-    assert.equal(state.errors.length, 0);
+    assert.equal(view.getData().connections.length, 1); assert.equal(view.getData().nodes[1].background, '#dbeafe');
+    view.undo(); view.undo(); assert.equal(view.getData().nodes[1].offset, undefined);
+    assert.equal(view.getData().nodes[1].color, '#1e3a5f'); assert.equal(view.getData().nodes[1].background, '#dbeafe');
+    assert.deepEqual(state.errors, []);
   } finally { state.close(); }
 });
 
