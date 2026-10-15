@@ -8,7 +8,7 @@
 - 改进思维导图的操作、布局和文件关联体验。
 - 持续检查保存保护、草稿恢复、性能及中英文界面，根据实际问题修复和迭代。
 
-具体改动会记录在 [CHANGELOG.md](CHANGELOG.md)，公开下载通过 [Releases](https://github.com/AkiNariT/MD-Editor-Mindmap/releases) 发布。
+具体改动会记录在 [CHANGELOG.md](CHANGELOG.md)，公开下载通过 [Releases](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases) 发布。
 
 ## macOS 版本
 
@@ -20,7 +20,7 @@ macOS 适配需要检查文件打开、保存与重命名、图片与导图关�
 
 ## 参与反馈
 
-可以通过 [Issues](https://github.com/AkiNariT/MD-Editor-Mindmap/issues) 提交现有问题，或描述 macOS 使用需求与设备环境。请不要上传私人文档和恢复记录。参与开发前请阅读 [贡献指南](CONTRIBUTING.md)。
+可以通过 [Issues](https://github.com/AkiNariT/Markdown-Editor-Mindmap/issues) 提交现有问题，或描述 macOS 使用需求与设备环境。请不要上传私人文档和恢复记录。参与开发前请阅读 [贡献指南](CONTRIBUTING.md)。
 
 ---
 

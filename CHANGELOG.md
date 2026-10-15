@@ -2,7 +2,7 @@
 
 ## 未发布 — 项目说明
 
-- 公开名称统一为 MD Editor & Mindmap（Markdown 可视化编辑与思维导图），仓库名使用 MD-Editor-Mindmap。
+- 公开名称统一为 Markdown-Editor-Mindmap（Markdown 可视化编辑与思维导图），仓库名使用 Markdown-Editor-Mindmap。
 - 补充主要借助 AI 工具开发的说明。
 - 明确持续优化方向，并将 macOS 列入计划；当前尚无 Mac 下载包，未承诺发布日期。
 - 完善项目首页与发布页标题，明确 Markdown 阅读、编辑和思维导图用途。

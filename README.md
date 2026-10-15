@@ -1,10 +1,10 @@
 <p align="center"><img src="assets/icon.svg" width="80" height="80" alt="MD"></p>
 
-# MD Editor & Mindmap（Markdown 可视化编辑与思维导图）
+# Markdown-Editor-Mindmap（Markdown 可视化编辑与思维导图）
 
-MD Editor & Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读与编辑器。直接编辑排版后的文字，也可以查看源码、双向对照，并用思维导图连接本地 Markdown 文件。
+Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读与编辑器。直接编辑排版后的文字，也可以查看源码、双向对照，并用思维导图连接本地 Markdown 文件。
 
-[English](README.en.md) · [下载 0.1.21](https://github.com/AkiNariT/MD-Editor-Mindmap/releases/tag/v0.1.21) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
+[English](README.en.md) · [下载 0.1.21](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.21) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
 
 ## 开发方式
 
@@ -12,13 +12,13 @@ MD Editor & Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读与编
 
 ## 下载与运行
 
-**[下载 Windows x64 便携版](https://github.com/AkiNariT/MD-Editor-Mindmap/releases/download/v0.1.21/MD-Windows-x64-0.1.21.zip)**
+**[下载 Windows x64 便携版](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.21/MD-Windows-x64-0.1.21.zip)**
 
 1. 解压整个 ZIP，双击其中的 `MD.exe`，无需安装 Node.js。
 2. 保留程序目录内的 DLL、resources 等文件；仅复制 EXE 无法正常运行。
 3. 升级时，先保存并正常退出旧版，再打开新版。同一用户配置只运行一个实例。
 
-适配目标是 **Windows 10 / 11 x64**；已进行 Windows 11 x64 桌面测试，尚未在独立 Windows 10 机器验证。当前是 **0.1.21 公开预览版**，便携包未签名，不含安装器或自动更新。下载包与 SHA256 校验清单均在 [Releases](https://github.com/AkiNariT/MD-Editor-Mindmap/releases)。
+适配目标是 **Windows 10 / 11 x64**；已进行 Windows 11 x64 桌面测试，尚未在独立 Windows 10 机器验证。当前是 **0.1.21 公开预览版**，便携包未签名，不含安装器或自动更新。下载包与 SHA256 校验清单均在 [Releases](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases)。
 
 **macOS 版本已列入后续开发计划，目前尚未发布 Mac 下载包。** 后续会继续优化现有功能，并进行 macOS 适配与实机验证；支持的系统版本、芯片架构和发布日期将在确认后公布，见 [开发计划](ROADMAP.md)。
 
@@ -71,4 +71,4 @@ npm run package
 
 ## 维护与反馈
 
-源码在 `main` 分支持续维护，公开下载按版本标签发布。问题和功能建议请使用 [Issues](https://github.com/AkiNariT/MD-Editor-Mindmap/issues)，提交代码前请阅读 [贡献指南](CONTRIBUTING.md)。更新过程和格式兼容要求见 [发布维护说明](docs/RELEASING.md)。安全问题请按 [安全报告说明](SECURITY.md) 私下报告。
+源码在 `main` 分支持续维护，公开下载按版本标签发布。问题和功能建议请使用 [Issues](https://github.com/AkiNariT/Markdown-Editor-Mindmap/issues)，提交代码前请阅读 [贡献指南](CONTRIBUTING.md)。更新过程和格式兼容要求见 [发布维护说明](docs/RELEASING.md)。安全问题请按 [安全报告说明](SECURITY.md) 私下报告。
