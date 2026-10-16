@@ -55,6 +55,11 @@ export function normalizeSession(value) {
       result[name] = entry[name] === true;
     }
     if (typeof entry.suggestedName === 'string' && entry.suggestedName.length <= 255) result.suggestedName = entry.suggestedName;
+    if (entry.pendingMindmapLink !== undefined) {
+      const link = entry.pendingMindmapLink;
+      if (result.type !== 'markdown' || !plain(link) || !identifier(link.mapId) || typeof link.nodeId !== 'string' || !link.nodeId.length || /[\x00-\x1f\x7f-\x9f]/.test(link.nodeId)) throw invalidRecovery(t('恢复文档状态无效。'));
+      result.pendingMindmapLink = { mapId: link.mapId, nodeId: link.nodeId };
+    }
     result.viewState = sanitizeViewState(entry.viewState);
     return result;
   });

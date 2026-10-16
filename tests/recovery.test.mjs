@@ -26,6 +26,41 @@ test('a durable checkpoint preserves invalid source drafts separately from origi
   assert.deepEqual((await readdir(directory)).sort(), ['SKILL.md', 'session.json']);
 });
 
+test('pending mindmap links survive durable recovery independently of the target tab', async t => {
+  const { store } = await fixture(t);
+  const pendingMindmapLink = { mapId: 'map-tab', nodeId: 'topic', ignored: 'not persisted' };
+  await store.save(session([{ ...baseline, namedDraft: true, pendingMindmapLink }]));
+  pendingMindmapLink.nodeId = 'changed after saving';
+  assert.deepEqual((await store.load()).session.documents[0].pendingMindmapLink, { mapId: 'map-tab', nodeId: 'topic' });
+  const importedNodeId = 'n'.repeat(256);
+  await store.save(session([{ ...baseline, pendingMindmapLink: { mapId: 'map-tab', nodeId: importedNodeId } }]));
+  assert.equal((await store.load()).session.documents[0].pendingMindmapLink.nodeId, importedNodeId);
+  assert.equal(normalizeSession(session()).documents[0].pendingMindmapLink, undefined);
+});
+
+test('malformed pending mindmap links cannot replace a durable draft', async t => {
+  const { store } = await fixture(t);
+  await store.save(session());
+  for (const pendingMindmapLink of [null, [], 'topic', {}, { mapId: '', nodeId: 'topic' }, { mapId: 'map', nodeId: '' }, { mapId: 'map', nodeId: 1 }, { mapId: 'map', nodeId: 'bad\u0001id' }, { mapId: 'x'.repeat(129), nodeId: 'topic' }]) {
+    await assert.rejects(store.save(session([{ ...baseline, pendingMindmapLink }])), /恢复/);
+  }
+  await assert.rejects(store.save(session([{ ...baseline, type: 'mindmap', pendingMindmapLink: { mapId: 'map', nodeId: 'topic' } }])), /恢复/);
+  assert.equal((await store.load()).session.documents[0].content, '# 原文\r\n');
+});
+
+test('renderer checkpoints cannot forge, replace or clear main-owned pending links', () => {
+  const pendingMindmapLink = { mapId: 'map-tab', nodeId: 'topic' };
+  const records = new Map([['one', { ...baseline, pendingMindmapLink }], ['two', { ...baseline, id: 'two' }]]);
+  mergeCheckpoint(records, { documents: [
+    { id: 'one', draft: 'updated', dirty: true, pendingMindmapLink: { mapId: 'forged', nodeId: 'other' } },
+    { id: 'two', draft: 'other draft', dirty: true, pendingMindmapLink },
+  ] });
+  assert.deepEqual(records.get('one').pendingMindmapLink, { mapId: 'map-tab', nodeId: 'topic' });
+  assert.equal(records.get('two').pendingMindmapLink, undefined);
+  mergeCheckpoint(records, { documents: [{ id: 'one', draft: 'updated again', dirty: true, pendingMindmapLink: null }] });
+  assert.deepEqual(records.get('one').pendingMindmapLink, { mapId: 'map-tab', nodeId: 'topic' });
+});
+
 test('corrupt primary recovers the last valid backup and reports fallback', async t => {
   const { directory, store } = await fixture(t);
   await store.save(session([{ ...baseline, draft: 'first', dirty: true }]));

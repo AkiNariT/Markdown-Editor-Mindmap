@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, screen, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Menu, protocol, screen, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { randomUUID } = require('node:crypto');
@@ -9,7 +9,7 @@ const dataArg = process.argv.find(arg => arg.startsWith('--user-data-dir='));
 if (dataArg) app.setPath('userData', dataArg.slice('--user-data-dir='.length));
 let win, files, helpers, imageHelpers, mindmap, mindmapFiles, mindmapCreate, recovery, recoveryStore, windowState, windowStore, openQueue, openArguments, doc, closing = false, busy = false;
 let recoveryNotice = null, rendererReady = false, openingInitial = false, windowSaveTimer, lastWindowState, correctingWindow = false;
-let t = message => message, getLocale = () => 'zh-CN', setLocale, settingsStore, updateChecker;
+let t = message => message, getLocale = () => 'zh-CN', setLocale, settingsStore, updateChecker, openWindowsDefaultApps, openWindowsDefaultSettings;
 const pendingOpenRequests = [{ argv: process.argv, cwd: process.cwd() }];
 let checkpointInProgress = false, closeAfterCheckpoint = false;
 let checkpointFinished = Promise.resolve();
@@ -97,6 +97,18 @@ function askCloseState() {
     win.webContents.send('moye:request-close-state', id);
   });
 }
+async function prepareDraftLink(record) {
+  const pendingLink = record.pendingMindmapLink;
+  if (!pendingLink) return null;
+  const map = documents.get(pendingLink.mapId);
+  if (map?.type !== 'mindmap') return null;
+  // Ask the live background editor so a recent deletion, link or undo wins.
+  // This happens before writing the Markdown file; failed reads keep the draft.
+  const response = await askContent(map.id);
+  const data = mindmapFiles.resolveMindmapFiles(mindmap.parseMindmap(response.content), map.path);
+  const node = data.nodes.find(value => value.id === pendingLink.nodeId);
+  return node && !node.file ? { map, data, node } : null;
+}
 async function saveDocument(content, as = false, document = doc, sourceSafe = false) {
   const record = document;
   const isMindmap = record.type === 'mindmap';
@@ -114,7 +126,9 @@ async function saveDocument(content, as = false, document = doc, sourceSafe = fa
   let target = record.path;
   if (as || !target || copyOnly) {
     const extension = isMindmap ? '.mdmap' : '.md';
-    const suggestion = record.path ? path.join(path.dirname(record.path), path.basename(record.path, path.extname(record.path)) + (copyOnly ? t('-编辑副本') : t('-副本')) + extension) : (record.suggestedName || t('未命名') + extension);
+    const mapPath = documents.get(record.pendingMindmapLink?.mapId)?.path;
+    const draftName = record.suggestedName || t('未命名') + extension;
+    const suggestion = record.path ? path.join(path.dirname(record.path), path.basename(record.path, path.extname(record.path)) + (copyOnly ? t('-编辑副本') : t('-副本')) + extension) : (mapPath ? path.join(path.dirname(mapPath), draftName) : draftName);
     const result = await dialog.showSaveDialog(win, { title: isMindmap ? t('保存思维导图') : copyOnly ? t('另存编辑副本') : t('保存 Markdown'), defaultPath: suggestion, filters: [isMindmap ? { name: t('MD 思维导图'), extensions: ['mdmap'] } : { name: t('Markdown 文档'), extensions: ['md', 'markdown'] }] });
     if (result.canceled || !result.filePath) return { canceled: true };
     target = result.filePath; if (!(isMindmap ? mindmapPath(target) : markdownPath(target))) target += extension;
@@ -138,14 +152,25 @@ async function saveDocument(content, as = false, document = doc, sourceSafe = fa
     if (!record.dirty && samePath && mindmap.serializeMindmap(incomingMap) === mindmap.serializeMindmap(record.mapData)) return { ...payload(record), unchanged: true };
   }
   if (!record.dirty && samePath && content === record.content) return { ...payload(record), unchanged: true };
-  const saved = await files.writeDocument(target, content, expected);
+  const pendingLink = record.pendingMindmapLink;
+  const preparedLink = pendingLink ? await prepareDraftLink(record) : null;
+  const saved = pendingLink && !record.path ? await mindmapCreate.writeNewMarkdown(target, content) : await files.writeDocument(target, content, expected);
   const skillDocument = Boolean(isSkillDocument(record));
   Object.assign(record, saved, { fileKey: await fileKey(saved.path), skillDocument, imageKey: samePath ? record.imageKey : randomUUID(), inserted: samePath ? record.inserted : undefined, dirty: false, namedDraft: false, previewContent: saved.content, copyOnly: !isMindmap && !sourceSafe && helpers.detectUnsupported(saved.content).length > 0 });
   record.draft = saved.content; record.visualLossy = false;
   if (isMindmap) record.mapData = mindmapFiles.resolveMindmapFiles(mindmap.parseMindmap(saved.content), saved.path);
+  let linkedMindmap;
+  if (preparedLink) {
+    const { map, data, node } = preparedLink;
+    node.file = saved.path;
+    map.draft = mindmap.serializeMindmap(data); map.previewContent = map.draft;
+    map.dirty = map.draft !== mindmap.serializeMindmap(map.mapData);
+    linkedMindmap = { id: map.id, nodeId: node.id, path: saved.path };
+  }
+  delete record.pendingMindmapLink;
   if (record === doc) updateTitle();
   await persistSession();
-  return payload(record);
+  return { ...payload(record), ...(linkedMindmap ? { linkedMindmap } : {}), ...(pendingLink && !linkedMindmap ? { mindmapLinkSkipped: true } : {}) };
 }
 async function guardUnsaved(document = doc, discarded) {
   if (!needsSave(document)) return true;
@@ -290,7 +315,7 @@ function correctWindowPlacement() {
 function handle(name, callback) {
   ipcMain.handle('moye:' + name, async (event, ...args) => {
     if (!authorized(event)) return { error: t('操作来源无效。') };
-    const serialized = !['get-settings', 'get-app-info', 'check-update', 'open-release-page', 'ready', 'session-ready', 'link', 'preview'].includes(name);
+    const serialized = !['get-settings', 'get-app-info', 'check-update', 'open-release-page', 'windows-default-app', 'windows-default-settings', 'copy-application-path', 'ready', 'session-ready', 'link', 'preview'].includes(name);
     if (serialized && name !== 'checkpoint' && checkpointInProgress) await checkpointFinished;
     if (busy && serialized) return { error: t('正在处理文档，请稍后重试。') };
     if (serialized) busy = true;
@@ -328,6 +353,7 @@ if (ownsProfile) app.whenReady().then(async () => {
   setLocale((await settingsStore.load()).language);
   const updates = await import(pathToFileURL(path.join(root, 'src/updates.mjs')).href);
   updateChecker = updates.createUpdateChecker({ currentVersion: app.getVersion(), fetchImpl: (url, options) => net.fetch(url, options) });
+  ({ openWindowsDefaultApps, openWindowsDefaultSettings } = await import(pathToFileURL(path.join(root, 'src/windows-default.mjs')).href));
   files = await import(pathToFileURL(path.join(root, 'src/files.mjs')).href);
   helpers = await import(pathToFileURL(path.join(root, 'src/document.mjs')).href);
   imageHelpers = await import(pathToFileURL(path.join(root, 'src/images.mjs')).href);
@@ -358,6 +384,24 @@ if (ownsProfile) app.whenReady().then(async () => {
   if (!documents.size) setDocument({ path: null, content: welcome(), fingerprint: null }, false, false);
   handle('get-settings', () => ({ language: getLocale() }));
   handle('get-app-info', () => ({ version: app.getVersion() }));
+  async function defaultAppAction(callback) {
+    try { return await callback(); }
+    catch (error) {
+      const messages = {
+        WINDOWS_DEFAULT_UNSUPPORTED: t('默认打开方式设置目前仅支持 Windows。'),
+        WINDOWS_DEFAULT_DEVELOPMENT: t('请在打包后的 MD.exe 中设置默认打开方式。'),
+        WINDOWS_DEFAULT_REGISTRATION: t('程序或 Windows 路径无效，请从完整解压的 MD.exe 重试。'),
+      };
+      return { error: messages[error.message] || t('无法打开默认应用设置，请稍后重试。'), code: Object.hasOwn(messages, error.message) ? error.message : 'WINDOWS_DEFAULT_FAILED' };
+    }
+  }
+  handle('windows-default-app', () => defaultAppAction(() => openWindowsDefaultApps({ isPackaged: app.isPackaged, openExternal: uri => shell.openExternal(uri) })));
+  handle('windows-default-settings', () => defaultAppAction(() => openWindowsDefaultSettings({ openExternal: uri => shell.openExternal(uri) })));
+  handle('copy-application-path', () => {
+    // The renderer cannot provide clipboard text or an executable path.
+    try { clipboard.writeText(process.execPath); return { status: 'copied' }; }
+    catch { return { error: t('无法复制程序路径，请稍后重试。'), code: 'WINDOWS_DEFAULT_COPY' }; }
+  });
   handle('check-update', async () => {
     try { return await updateChecker.check(); }
     catch (error) {
@@ -416,11 +460,11 @@ if (ownsProfile) app.whenReady().then(async () => {
     const node = mapData.nodes.find(value => value.id === nodeId);
     if (!node) throw new Error(t('这个节点已不存在。'));
     if (node.file) throw new Error(t('这个节点已关联文件，请先解除关联。'));
-    const directory = record.path ? path.dirname(record.path) : app.getPath('documents');
-    const result = await dialog.showSaveDialog(win, { title: t('创建 Markdown 文件'), buttonLabel: t('创建并关联'), defaultPath: path.join(directory, mindmapCreate.suggestNodeFileName(node.text)), filters: [{ name: t('Markdown 文档'), extensions: ['md', 'markdown'] }] });
-    if (result.canceled || !result.filePath) return { canceled: true };
-    const target = markdownPath(result.filePath) ? result.filePath : result.filePath + '.md';
-    return mindmapCreate.createNodeMarkdown(target, node.text);
+    const existing = [...documents.values()].find(value => value.pendingMindmapLink?.mapId === id && value.pendingMindmapLink?.nodeId === nodeId);
+    if (existing) activateDocument(existing.id);
+    else setDocument({ path: null, content: mindmapCreate.nodeMarkdown(node.text), fingerprint: null, suggestedName: mindmapCreate.suggestNodeFileName(node.text), namedDraft: true, pendingMindmapLink: { mapId: id, nodeId } }, true);
+    await persistSession();
+    return { ok: true, documentId: doc.id };
   });
   handle('mindmap-open-file', async (id, content, nodeId, created = false) => {
     const record = documents.get(id);
@@ -511,7 +555,10 @@ if (ownsProfile) app.whenReady().then(async () => {
     (async () => {
       await askCloseState();
       const discarded = new Set();
-      for (const value of documents.values()) if (!await guardUnsaved(value, discarded)) return false;
+      // Saving a node draft can dirty its map. Process those drafts first so
+      // every newly attached path is included in the map's Save/Discard choice.
+      const closeOrder = [...documents.values()].sort((a, b) => Number(Boolean(b.pendingMindmapLink)) - Number(Boolean(a.pendingMindmapLink)));
+      for (const value of closeOrder) if (!await guardUnsaved(value, discarded)) return false;
       await persistSession(discarded.size > 0, recovery.sessionAfterDiscard(sessionSnapshot(), discarded));
       await saveWindowPlacement();
       return true;

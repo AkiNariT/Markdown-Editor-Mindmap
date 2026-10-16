@@ -7,11 +7,24 @@ import { marked } from 'marked';
 import { JSDOM } from 'jsdom';
 import { setLocale } from '../src/i18n.mjs';
 import { suggestNodeFileName, nodeMarkdown, createNodeMarkdown } from '../src/mindmap-create.mjs';
+import * as markdownCreation from '../src/mindmap-create.mjs';
 async function fixture(t) {
   const directory = await mkdtemp(join(process.cwd(), '.mindmap-create-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   return directory;
 }
+
+test('first save of a node draft writes edited Markdown verbatim and cannot replace another file', async t => {
+  assert.equal(typeof markdownCreation.writeNewMarkdown, 'function');
+  const directory = await fixture(t), target = join(directory, 'draft.md');
+  const content = '\ufeff# Edited title\r\n\r\nWritten before choosing a location.\r\n';
+  const result = await markdownCreation.writeNewMarkdown(target, content);
+  assert.equal(result.content, content); assert.match(result.fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(await readFile(target, 'utf8'), content);
+  await assert.rejects(markdownCreation.writeNewMarkdown(target, 'must not overwrite'), error => error.code === 'EEXIST');
+  assert.equal(await readFile(target, 'utf8'), content);
+  assert.deepEqual(await readdir(directory), ['draft.md']);
+});
 function mockFilesystem(t, name, implementation) {
   const fs = createRequire(import.meta.url)('node:fs/promises');
   const original = fs[name];

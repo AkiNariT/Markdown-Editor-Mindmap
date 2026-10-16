@@ -138,16 +138,63 @@ test('adding a node from a connection selection opens node editing and undo rest
   } finally { f.close(); }
 });
 
-test('unlinked node creation works in reading mode, is deduplicated and can be undone without recreating', async () => {
+test('unlinked node opens a draft in reading mode without linking or opening a file', async () => {
   let resolve; const created = [], opened = [];
   const f = setup({ onCreate: id => { created.push(id); return new Promise(done => { resolve = done; }); }, onOpen: (id, options) => opened.push({ id, options }) }), { view } = f;
   try {
+    const before = view.getText();
     view.setEditable(false); dbl(node(view)); dbl(node(view)); assert.deepEqual(created, ['a']);
-    resolve('C:/notes/新建.md'); await tick(); assert.equal(view.getData().nodes[1].file, 'C:/notes/新建.md'); assert.deepEqual(opened, [{ id: 'a', options: { created: true } }]);
-    assert.equal(view.getData().nodes[1].text, '子节点'); view.setEditable(true); assert.equal(view.undo(), true); assert.equal(view.getData().nodes[1].file, null);
-    assert.equal(view.redo(), true); assert.equal(created.length, 1);
-    dbl(node(view)); await tick(); assert.equal(opened.length, 2); assert.equal(opened[1].options, undefined);
+    resolve('C:/notes/not-yet-saved.md'); await tick();
+    assert.equal(view.getText(), before); assert.deepEqual(opened, []); assert.deepEqual(f.changes, []);
+    view.setEditable(true); assert.equal(view.undo(), false);
+    dbl(node(view)); assert.deepEqual(created, ['a', 'a'], 'a later activation can reopen the same main-owned draft');
+    resolve({ ok: true }); await tick(); assert.equal(view.getText(), before);
   } finally { f.close(); }
+});
+
+test('saved drafts attach in a locked reading view while preserving selection, viewport and undo', () => {
+  const f = setup(), { view } = f;
+  try {
+    view.restoreSessionState({ selected: 'root', position: { left: 170, top: 280 } });
+    view.setEditable(false); view.setLocked(true);
+    const before = view.captureSessionState();
+    assert.equal(view.attachFile('a', 'C:/notes/新建.md'), true);
+    assert.equal(view.getData().nodes[1].file, 'C:/notes/新建.md');
+    assert.deepEqual(view.captureSessionState(), before);
+    assert.equal(canvas(view).scrollLeft, 170); assert.equal(canvas(view).scrollTop, 280);
+    assert.equal(view.host.querySelector('.mindmap-text-input').readOnly, true);
+    assert.equal(view.undo(), false, 'background attachment does not unlock the view');
+    view.setLocked(false); assert.equal(view.undo(), false, 'background attachment does not enable editing');
+    view.setEditable(true); assert.equal(view.undo(), true); assert.equal(view.getData().nodes[1].file, null);
+    assert.equal(view.undo(), false); assert.equal(view.redo(), true); assert.equal(view.getData().nodes[1].file, 'C:/notes/新建.md');
+    assert.equal(f.changes.length, 3); assert.deepEqual(f.errors, []);
+  } finally { f.close(); }
+});
+
+test('saved draft attachment cannot replace a manual link or restore a deleted node', () => {
+  const initial = data(); initial.nodes[1].file = 'C:/manual.md';
+  const f = setup({}, initial), { view } = f;
+  try {
+    assert.equal(view.attachFile('a', 'C:/draft.md'), false);
+    assert.equal(view.getData().nodes[1].file, 'C:/manual.md');
+    const withoutChild = { ...initial, nodes: [initial.nodes[0]], connections: [] }; view.setSaved(withoutChild);
+    assert.equal(view.attachFile('a', 'C:/draft.md'), false);
+    assert.deepEqual(view.getData(), withoutChild); assert.equal(view.undo(), false); assert.deepEqual(f.changes, []);
+  } finally { f.close(); }
+});
+
+test('saved draft attachment keeps path validation, composition and destruction protections', () => {
+  const f = setup(), { view } = f;
+  const before = view.getText();
+  try {
+    for (const path of ['https://example.com/note.md', 'C:/note.txt', 'C:/note.md:stream.md', 'C:/bad\u0001.md']) assert.equal(view.attachFile('a', path), false);
+    assert.equal(view.getText(), before); assert.equal(f.errors.length, 4); assert.equal(view.undo(), false);
+    const input = view.host.querySelector('.mindmap-text-input');
+    input.dispatchEvent(new dom.window.CompositionEvent('compositionstart', { bubbles: true }));
+    assert.equal(view.attachFile('a', 'C:/draft.md'), false); assert.equal(view.getText(), before);
+    input.dispatchEvent(new dom.window.CompositionEvent('compositionend', { bubbles: true }));
+  } finally { f.close(); }
+  assert.equal(view.attachFile('a', 'C:/draft.md'), false); assert.equal(view.getText(), before);
 });
 
 test('canceled, failed, stale and protected new-file actions do not change the map', async () => {

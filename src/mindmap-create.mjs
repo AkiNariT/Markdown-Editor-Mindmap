@@ -1,6 +1,6 @@
 import { open, link, lstat, unlink } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { normalizeDocumentName } from './files.mjs';
 import { t } from './i18n.mjs';
 
@@ -59,9 +59,15 @@ async function writeExclusive(destination, content) {
 }
 
 export async function createNodeMarkdown(target, text) {
+  const result = await writeNewMarkdown(target, nodeMarkdown(text));
+  return { path: result.path };
+}
+
+export async function writeNewMarkdown(target, content) {
   if (typeof target !== 'string' || !isAbsolute(target) || /[\x00-\x1f\x7f-\x9f]/.test(target) || !/\.(md|markdown)$/i.test(target)) throw new Error(t('请选择有效的 Markdown 文件位置。'));
   if (normalizeDocumentName(basename(target)) !== basename(target)) throw new Error(t('请选择有效的 Markdown 文件位置。'));
-  const destination = resolve(target), content = nodeMarkdown(text);
+  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 8 * 1024 * 1024) throw new Error(t('文档超过 8 MB 或内容无效。'));
+  const destination = resolve(target);
   const temporary = join(dirname(destination), '.md-node-' + randomUUID() + '.tmp');
   let handle, ownsTemporary = false;
   try {
@@ -82,7 +88,7 @@ export async function createNodeMarkdown(target, text) {
         throw failure;
       }
     }
-    return { path: destination };
+    return { path: destination, content, fingerprint: createHash('sha256').update(content, 'utf8').digest('hex') };
   } finally {
     if (handle) await handle.close().catch(() => {});
     if (ownsTemporary) await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') console.error(t('临时文件清理失败'), error.code); });

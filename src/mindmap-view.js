@@ -81,8 +81,8 @@ export function createMindmapView(initialData, options = {}) {
     if (JSON.stringify(textBefore.data) !== JSON.stringify(data)) push(undoStack, textBefore);
     textBefore = null;
   }
-  function mutate(operation, { allowLocked = false } = {}) {
-    if (destroyed || locked || composing || (!editable && !allowLocked)) return false;
+  function mutate(operation, { allowLocked = false, allowBackground = false } = {}) {
+    if (destroyed || (locked && !allowBackground) || composing || (!editable && !allowLocked)) return false;
     cancelDrag(); closeMenu(); finishText();
     const before = snapshot(), draft = clone(data);
     let nextSelection = selected;
@@ -209,13 +209,13 @@ export function createMindmapView(initialData, options = {}) {
     if (!node(id) || node(id).file || !options.onCreate || locked || destroyed || composing || pendingCreate || pendingLink || drag || connectionSource || Date.now() < suppressOpenUntil || Date.now() < suppressClickUntil) return;
     finishText(); pendingCreate = true;
     try {
-      const path = await options.onCreate(id);
-      if (path && !destroyed && !locked && node(id) && !node(id).file) {
-        const associated = mutate(draft => { draft.nodes.find(item => item.id === id).file = path; return id; }, { allowLocked: true });
-        if (associated) await openNode(id, { created: true });
-      }
+      await options.onCreate(id);
     } catch (error) { if (!destroyed) report(error); }
     finally { pendingCreate = false; if (!destroyed) renderSelection(); }
+  }
+  function attachFile(id, path) {
+    if (!node(id) || node(id).file) return false;
+    return mutate(draft => { draft.nodes.find(item => item.id === id).file = path; }, { allowLocked: true, allowBackground: true });
   }
   function beginConnection() {
     if (!editable || locked || composing || destroyed) return;
@@ -924,7 +924,7 @@ export function createMindmapView(initialData, options = {}) {
     refreshTheme: () => { if (!destroyed) { for (const [id, elements] of nodeElements) applyNodeAppearance(elements.card, node(id)); renderSelection(); } },
     setZoom, getZoom: () => zoom, capturePosition, restorePosition, captureSessionState, restoreSessionState,
     focus: () => canvas.focus({ preventScroll: true }),
-    undo: () => travel(undoStack, redoStack), redo: () => travel(redoStack, undoStack), replaceFile,
+    undo: () => travel(undoStack, redoStack), redo: () => travel(redoStack, undoStack), replaceFile, attachFile,
     destroy() {
       destroyed = true; unsubscribeLocale(); observer?.disconnect(); releaseDrag(); closeMenu();
       document.removeEventListener('pointerdown', outsidePointer, true);

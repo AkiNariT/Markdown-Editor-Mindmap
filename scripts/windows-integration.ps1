@@ -2,6 +2,8 @@
 <#
 Current-user, opt-in Windows shell integration for portable MD.
 Install adds Open With candidates and shortcuts; it never changes defaults.
+RegisterDefaultApps adds the same candidates and capabilities, with only a
+Start Menu shortcut so Windows can discover the application's explicit AppID.
 After moving MD, run Install again from the new directory. Uninstall only
 removes entries still owned by this script and pointing at this executable.
 DryRun prints the guarded plan without changing registrations or shortcuts.
@@ -9,26 +11,35 @@ TestId/TestDirectory redirect ALL writes to a private test sandbox.
 References:
 https://learn.microsoft.com/en-us/windows/win32/shell/fa-file-types
 https://learn.microsoft.com/en-us/windows/win32/shell/appids
+https://learn.microsoft.com/en-us/windows/apps/develop/launch/launch-default-apps-settings
+https://learn.microsoft.com/en-us/windows/win32/shell/default-programs
+https://learn.microsoft.com/en-us/deployedge/edge-ie-mode-add-guidance-filetype-associations
 https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ishelllinkw
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('Install','Uninstall')][string]$Action,
+    [Parameter(Mandatory=$true)][ValidateSet('Install','RegisterDefaultApps','Uninstall')][string]$Action,
     [string]$ExecutablePath = (Join-Path $PSScriptRoot 'MD.exe'),
     [switch]$DryRun,
     [string]$TestId,
     [string]$TestDirectory
 )
+# Electron reads stdout/stderr as UTF-8; Windows PowerShell otherwise uses the console code page.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $owner = 'MD.WindowsIntegration.v1'
 $appId = 'Moye.MD'
+$registeredApplication = 'MD'
+$installing = $Action -ne 'Uninstall'
 if ($ExecutablePath -match '["\r\n]' -or -not [IO.Path]::IsPathRooted($ExecutablePath)) { throw 'ExecutablePath must be an absolute path without quotes or newlines.' }
 $exe = [IO.Path]::GetFullPath($ExecutablePath)
 if ([IO.Path]::GetFileName($exe) -ine 'MD.exe') { throw 'ExecutablePath must point to MD.exe.' }
-if ($Action -eq 'Install' -and -not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "MD.exe does not exist: $exe" }
+if ($installing -and -not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "MD.exe does not exist: $exe" }
 if ([bool]$TestId -ne [bool]$TestDirectory) { throw 'TestId and TestDirectory must be supplied together.' }
 $registryRoot = 'HKCU:\Software\Classes'
+$applicationRoot = 'HKCU:\Software\Moye.MD'
+$registeredApplicationsRoot = 'HKCU:\Software\RegisteredApplications'
 $desktop = [Environment]::GetFolderPath('DesktopDirectory')
 $startMenu = [Environment]::GetFolderPath('Programs')
 if ($TestId) {
@@ -36,9 +47,13 @@ if ($TestId) {
     if (-not [IO.Path]::IsPathRooted($TestDirectory)) { throw 'TestDirectory must be absolute.' }
     $testBase = [IO.Path]::GetFullPath($TestDirectory)
     $registryRoot = "HKCU:\Software\MD.WindowsIntegrationTests\$TestId\Classes"
+    $applicationRoot = "HKCU:\Software\MD.WindowsIntegrationTests\$TestId\Moye.MD"
+    $registeredApplicationsRoot = "HKCU:\Software\MD.WindowsIntegrationTests\$TestId\RegisteredApplications"
     $desktop = Join-Path $testBase 'Desktop'
     $startMenu = Join-Path $testBase 'Start Menu'
 }
+$capabilitiesRoot = Join-Path $applicationRoot 'Capabilities'
+$capabilitiesRelative = $capabilitiesRoot.Substring(6)
 $command = '"' + $exe + '" "%1"'
 $icon = '"' + $exe + '",0'
 $registrations = @(
@@ -73,15 +88,41 @@ function Values-For($Registration) {
         $values += Entry $key 'FriendlyAppName' 'MD'
         foreach ($extension in @('.md','.markdown','.mdmap')) { $values += Entry (Join-Path $key 'SupportedTypes') $extension '' }
     } else {
+        # Application metadata belongs to each ProgID as well as Capabilities.
+        $application = Join-Path $key 'Application'
+        $values += Entry $application 'ApplicationName' $registeredApplication
+        $values += Entry $application 'ApplicationCompany' 'MD'
+        $values += Entry $application 'ApplicationDescription' 'Markdown reader and editor'
+        $values += Entry $application 'ApplicationIcon' $icon
+        $values += Entry $application 'AppUserModelID' $appId
         foreach ($extension in $Registration.Extensions) { $values += Entry (Join-Path $registryRoot "$extension\OpenWithProgids") $Registration.Name '' }
     }
     return $values
+}
+function Owns-Capabilities([bool]$ExactExecutable) {
+    $storedExe = Read-Value $capabilitiesRoot 'MDExecutablePath'
+    if ((Read-Value $capabilitiesRoot 'MDIntegrationOwner') -cne $owner -or -not $storedExe) { return $false }
+    if ($ExactExecutable -and $storedExe -ine $exe) { return $false }
+    if ((Read-Value $registeredApplicationsRoot $registeredApplication) -cne $capabilitiesRelative) { return $false }
+    return (Read-Value (Join-Path $registryRoot 'Moye.MD.Markdown\shell\open\command') '') -ceq ('"' + $storedExe + '" "%1"')
+}
+function Capability-Values {
+    return @(
+        (Entry $capabilitiesRoot 'MDIntegrationOwner' $owner),
+        (Entry $capabilitiesRoot 'MDExecutablePath' $exe),
+        (Entry $capabilitiesRoot 'ApplicationName' $registeredApplication),
+        (Entry $capabilitiesRoot 'ApplicationDescription' 'Markdown reader and editor'),
+        (Entry $capabilitiesRoot 'ApplicationIcon' $icon),
+        (Entry (Join-Path $capabilitiesRoot 'FileAssociations') '.md' 'Moye.MD.Markdown'),
+        (Entry (Join-Path $capabilitiesRoot 'FileAssociations') '.markdown' 'Moye.MD.Markdown'),
+        (Entry $registeredApplicationsRoot $registeredApplication $capabilitiesRelative)
+    )
 }
 $changes = @()
 $skipped = @()
 foreach ($registration in $registrations) {
     $key = Join-Path $registryRoot $registration.Name
-    if ($Action -eq 'Install') {
+    if ($installing) {
         if ((Test-Path -LiteralPath $key) -and -not (Owns-Registration $key $false)) { throw "Registration conflict: $key. Existing data was not changed." }
         foreach ($extension in $registration.Extensions) {
             $existing = Read-Value (Join-Path $registryRoot "$extension\OpenWithProgids") $registration.Name
@@ -93,6 +134,14 @@ foreach ($registration in $registrations) {
         $changes += Values-For $registration
     } else { $skipped += $key }
 }
+if ($installing) {
+    if ((Test-Path -LiteralPath $capabilitiesRoot) -and -not (Owns-Capabilities $false)) { throw "Registration conflict: $capabilitiesRoot. Existing data was not changed." }
+    $existing = Read-Value $registeredApplicationsRoot $registeredApplication
+    if ($null -ne $existing -and (-not (Test-Path -LiteralPath $capabilitiesRoot) -or $existing -cne $capabilitiesRelative)) { throw "Registration conflict: $registeredApplicationsRoot $registeredApplication. Existing data was not changed." }
+    $changes += Capability-Values
+} elseif (Owns-Capabilities $true) {
+    $changes += Capability-Values
+} else { $skipped += $capabilitiesRoot }
 # Explicit Unicode interfaces avoid WScript.Shell's ANSI path conversion in PS 5.1.
 # IPropertyStore sets the same AppUserModelID as Electron. The PROPVARIANT layout
 # uses two pointer-sized union members for x86 and x64 Windows PowerShell.
@@ -162,13 +211,15 @@ public static class MDWindowsShell {
         try { Marshal.ThrowExceptionForHR(store.SetValue(ref key, ref value)); Marshal.ThrowExceptionForHR(store.Commit()); }
         finally { Marshal.FreeCoTaskMem(value.value); Marshal.FinalReleaseComObject(store); }
     }
-    public static void Notify() { SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); }
+    // Deliver the association notification before this helper exits and opens Settings.
+    public static void Notify() { SHChangeNotify(0x08000000, 0x1000, IntPtr.Zero, IntPtr.Zero); }
 }
 '@
 }
 
 $shortcuts = @()
-foreach ($directory in @($desktop, $startMenu)) {
+$shortcutDirectories = if ($Action -eq 'RegisterDefaultApps') { @($startMenu) } else { @($desktop, $startMenu) }
+foreach ($directory in $shortcutDirectories) {
     if (-not $directory) { throw 'Windows did not provide a current-user shortcut directory.' }
     $linkPath = Join-Path $directory 'MD.lnk'
     $exists = Test-Path -LiteralPath $linkPath
@@ -179,18 +230,18 @@ foreach ($directory in @($desktop, $startMenu)) {
         $owned = $link.Description -ceq $owner -and $link.Arguments -ceq ''
         $matches = $owned -and $link.TargetPath -ieq $exe
     }
-    if ($Action -eq 'Install' -and $exists -and -not $owned) { throw "Shortcut conflict: $linkPath. Existing data was not changed." }
-    if ($Action -eq 'Install' -or $matches) { $shortcuts += $linkPath }
+    if ($installing -and $exists -and -not $owned) { throw "Shortcut conflict: $linkPath. Existing data was not changed." }
+    if ($installing -or $matches) { $shortcuts += $linkPath }
     elseif ($exists) { $skipped += $linkPath }
 }
 $plan = [ordered]@{
-    action=$Action; dryRun=[bool]$DryRun; executable=$exe; appUserModelId=$appId
+    action=$Action; dryRun=[bool]$DryRun; executable=$exe; appUserModelId=$appId; registeredApplication=$registeredApplication
     registryRoot=$registryRoot; command=$command; extensions=@('.md','.markdown','.mdmap')
     changesDefaults=$false; registryValues=$changes; shortcuts=$shortcuts; skipped=$skipped
 }
 if (-not $DryRun) {
     foreach ($entry in $changes) {
-        if ($Action -eq 'Install') {
+        if ($installing) {
             $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($entry.path.Substring(6))
             try { $key.SetValue($entry.name, $entry.value, [Microsoft.Win32.RegistryValueKind]::$($entry.kind)) }
             finally { $key.Dispose() }
@@ -200,7 +251,7 @@ if (-not $DryRun) {
         }
     }
     foreach ($linkPath in $shortcuts) {
-        if ($Action -eq 'Install') {
+        if ($installing) {
             $directory = Split-Path -Parent $linkPath
             [void][IO.Directory]::CreateDirectory($directory)
             [MDWindowsShell]::WriteShortcut($linkPath, $exe, $owner)
@@ -212,7 +263,12 @@ if (-not $DryRun) {
         $keys = @()
         foreach ($entry in $changes) {
             $keyPath = $entry.path
-            while ($keyPath.Length -gt $registryRoot.Length) { $keys += $keyPath; $keyPath = Split-Path -Parent $keyPath }
+            $boundary = $null
+            if ($keyPath.StartsWith($registryRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { $boundary = $registryRoot }
+            elseif ($keyPath.StartsWith($applicationRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { $boundary = Split-Path -Parent $applicationRoot }
+            if ($boundary) {
+                while ($keyPath.Length -gt $boundary.Length) { $keys += $keyPath; $keyPath = Split-Path -Parent $keyPath }
+            }
         }
         foreach ($keyPath in ($keys | Select-Object -Unique | Sort-Object -Property Length -Descending)) {
             if (Test-Path -LiteralPath $keyPath) {

@@ -10,6 +10,7 @@ import { parseMindmap, serializeMindmap } from './mindmap.mjs';
 import { captureReadingPosition, restoreReadingPosition } from './zoom.mjs';
 import { createCheckpointController } from './checkpoint.mjs';
 import { createUpdatesUI } from './updates-ui.js';
+import { createWindowsDefaultUI } from './windows-default-ui.mjs';
 import { t, setLocale, getLocale, onLocaleChange } from './i18n.mjs';
 
 const $ = id => document.getElementById(id);
@@ -24,6 +25,7 @@ let tabOrder = [];
 let composing = false;
 let recoveryStatus = '', recoveryFailure = '';
 let changingLanguage = false;
+const windowsDefault = createWindowsDefaultUI({ api, t, document, canAct: () => !working && !closing });
 // Keep references to application chrome before any document content is mounted.
 const localizedElements = [...document.querySelectorAll('[data-i18n], [data-i18n-title], [data-i18n-aria-label], [data-i18n-placeholder], [data-i18n-alt]')];
 function applyStaticTranslations() {
@@ -42,6 +44,7 @@ function refreshLanguage() {
   const anchor = loaded && state && !state.map && viewMode !== 'source' ? captureReadingPosition(canvas) : null;
   const sourcePosition = state?.source ? { top: state.source.input.scrollTop, left: state.source.input.scrollLeft } : null;
   applyStaticTranslations();
+  windowsDefault.refreshLanguage();
   updates.refreshLanguage();
   $('theme-label').textContent = t(document.body.classList.contains('dark') ? '浅色外观' : '黑色外观');
   $('toast').hidden = true;
@@ -135,6 +138,7 @@ function visualView() { return viewMode === 'render' || viewMode === 'compare'; 
 function readDocumentParts(value) { const parts = splitFrontmatter(value.content); if (parts && !value.skillDocument) parts.skill = null; return parts; }
 function setMetadataEditable() { for (const id of ['skill-name', 'skill-description']) $(id).readOnly = !editing || !visualView() || working || closing; }
 function setInputPermissions() {
+  windowsDefault.setLocked(working || closing);
   editor?.setEditable(editing && visualView() && !working && !closing, false); setMetadataEditable();
   const state = sessions.get(current?.id);
   if (state?.source) state.source.input.readOnly = !editing || working || closing;
@@ -192,7 +196,7 @@ function createSession(value) {
         if (loaded && current?.id === value.id) updateState(); else renderTabs();
       },
       onLink: async () => action(async () => { const result = unpack(await api.chooseMindmapFile()); return result.canceled ? null : result.path; }),
-      onCreate: async nodeId => action(async () => { const result = unpack(await api.createMindmapFile(state.current.id, state.map.getText(), nodeId)); return result.canceled ? null : result.path; }),
+      onCreate: async nodeId => action(async () => { await checkpoint.flush(); return unpack(await api.createMindmapFile(state.current.id, state.map.getText(), nodeId)); }),
       onOpen: async (nodeId, options = {}) => action(async () => {
         await checkpoint.flush();
         return unpack(await api.openMindmapFile(state.current.id, state.map.getText(), nodeId, options.created === true));
@@ -486,7 +490,7 @@ async function save(as = false) {
   const result = unpack(await api.save(content(), as, sourceSafe(sessions.get(current.id))));
   if (result.canceled) return;
   applySaved(result);
-  toast(result.unchanged ? t('没有需要保存的修改') : t('已保存'));
+  toast(result.mindmapLinkSkipped ? t('文档已保存；原导图或节点已变化，请按需手动关联。') : result.unchanged ? t('没有需要保存的修改') : t('已保存'));
 }
 function updateNameLabels() {
   $('name-heading').textContent = current.path ? t('重命名文件') : t('命名文件');
@@ -541,6 +545,10 @@ $('name-form').addEventListener('submit', event => {
 });
 function applySaved(result) {
   stashActive();
+  if (result.linkedMindmap) {
+    const { id, nodeId, path } = result.linkedMindmap;
+    sessions.get(id)?.map?.attachFile(nodeId, path);
+  }
   let state = sessions.get(result.id); if (!state) return;
   if (result.tabs) tabOrder = result.tabs;
   const active = current?.id === result.id;

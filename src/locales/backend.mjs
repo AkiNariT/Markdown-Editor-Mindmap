@@ -1,4 +1,9 @@
 export default {
+  '默认打开方式设置目前仅支持 Windows。': 'Default app settings are currently supported only on Windows.',
+  '请在打包后的 MD.exe 中设置默认打开方式。': 'Use the packaged MD.exe to set the default app.',
+  '程序或 Windows 路径无效，请从完整解压的 MD.exe 重试。': 'The application or Windows path is invalid. Try running MD.exe from the fully extracted application folder.',
+  '无法复制程序路径，请稍后重试。': 'Could not copy the application path. Try again.',
+  '无法打开默认应用设置，请稍后重试。': 'Could not open default app settings. Please try again later.',
   '无法连接 GitHub，请检查网络后重试。': 'Could not connect to GitHub. Check your connection and try again.',
   '检查更新超时，请稍后重试。': 'The update check timed out. Please try again later.',
   'GitHub 请求暂时受限，请稍后重试或打开官方下载页。': 'GitHub is limiting requests. Try again later or open the official download page.',

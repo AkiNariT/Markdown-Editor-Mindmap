@@ -104,6 +104,7 @@
 @media(max-width:760px){.document-label{max-width:130px;min-width:60px}.topbar{gap:5px}.brand-mark{width:28px;height:28px}#new-mindmap{padding:0 6px}.right-actions .separator{display:none}}
 dialog{max-width:calc(100vw - 32px);max-height:calc(100vh - 48px);overflow-y:auto}
 #settings-dialog{width:380px}
+.settings-default-app{border-top:1px solid var(--border);margin-top:18px;padding-top:16px}.settings-default-app>button{border:1px solid var(--border);border-radius:6px;padding:8px 12px}.settings-default-app p{margin:9px 0}.settings-default-app p:empty{display:none}.default-app-actions{display:flex;flex-wrap:wrap;gap:4px 10px}.default-app-actions button{padding:5px 0;font-size:12px;color:var(--muted)}.settings-default-app details{margin-top:8px;font-size:12px;color:var(--muted)}.settings-default-app summary{cursor:pointer}.settings-default-app pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:140px;overflow-y:auto;font-size:11px;font-family:Consolas,monospace;user-select:text;margin:8px 0}
 .settings-actions{justify-content:space-between}
 #update-dialog{width:560px;overflow-wrap:anywhere}
 #update-dialog .dialog-heading{margin-bottom:12px}

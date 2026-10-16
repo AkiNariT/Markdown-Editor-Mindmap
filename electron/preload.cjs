@@ -4,6 +4,9 @@ const listen = (name, callback) => { const handler = (_, value) => callback(valu
 contextBridge.exposeInMainWorld('moye', {
   getSettings: () => invoke('get-settings'), setLanguage: language => invoke('set-language', language),
   getAppInfo: () => invoke('get-app-info'), checkUpdate: () => invoke('check-update'), openReleasePage: () => invoke('open-release-page'),
+  setWindowsDefaultApp: () => invoke('windows-default-app'),
+  openWindowsDefaultSettings: () => invoke('windows-default-settings'),
+  copyApplicationPath: () => invoke('copy-application-path'),
   ready: () => invoke('ready'), sessionReady: () => invoke('session-ready'), open: () => invoke('open'),
   checkpoint: value => invoke('checkpoint', value),
   openTemplate: () => invoke('template'),
