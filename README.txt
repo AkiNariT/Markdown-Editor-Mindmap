@@ -1,23 +1,25 @@
-Markdown-Editor-Mindmap（Markdown 可视化编辑与思维导图）0.1.25
+Markdown-Editor-Mindmap（Markdown 可视化编辑与思维导图）0.1.26 公开预览版
 
-运行：双击“MD.exe”。便携文件夹里的其他文件请保留在原位。
-更新版本时，将新版完整解压到独立目录，保存需要保留的修改并正常退出旧版，再打开新版 MD.exe；同一用户配置只运行一个实例。已有本机恢复记录仍可读取。
+推荐单文件版：将“MD-Windows-x64-0.1.26.exe”复制到桌面或其他常用位置，双击即可运行，也可以改名。无需安装、管理员权限或额外下载运行环境。每次启动会在本机临时目录展开运行文件；看到“正在打开 MD”时请等待，耗时取决于磁盘与系统负载。
+文件夹 ZIP 版：解压整个 ZIP 后双击其中的“MD.exe”。这个 MD.exe 需要同目录内的 DLL、resources 等配套文件，请保留完整文件夹，不能单独复制它。
+更新版本时，保存需要保留的修改并正常退出旧版，再打开新版；同一用户配置只运行一个实例。文件夹版请将新版完整解压到独立目录。已有本机恢复记录仍可读取。
+设置与草稿保存在当前 Windows 用户的 %APPDATA%\MD（可用 --user-data-dir 指定其他目录）。复制程序不会带走这些个人数据；文档仍需保存到自己的文件夹。
 适用目标：Windows 10 / Windows 11 的 64 位 x64 系统。这是一份便携构建，不需要安装 Node.js 或开发工具。
+本版为未签名的公开预览版。下载：https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.26
 
 检查更新
 右上角“更多操作”（…）→ 检查更新，或“设置”→ 检查更新，打开更新弹窗后点击检查。应用读取固定的官方仓库 AkiNariT/Markdown-Editor-Mindmap 的公开 GitHub 发布信息，包括公开预览版，显示当前版本、最新兼容 Windows x64 版本和纯文本更新说明。点击发布页按钮会在外部浏览器打开已核对的官方版本页面，再自行下载便携包。
 应用不会在后台自动检查，也不会自动下载、安装或重启。关闭弹窗后可继续编辑和保存；网络不可用或检查失败不影响关闭弹窗后的正常使用。
-手动检查会连接 api.github.com，GitHub 可接收 IP 地址和正常请求元数据；不会发送文档、文件路径、草稿或账户令牌。文档中的远程图片仍按原有方式访问图片服务器，浏览器下载属于外部应用的网络行为。隐私说明：https://github.com/AkiNariT/Markdown-Editor-Mindmap/blob/v0.1.25/PRIVACY.md
-0.1.25 公开预览版发布页：https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.25
+手动检查会连接 api.github.com，GitHub 可接收 IP 地址和正常请求元数据；不会发送文档、文件路径、草稿或账户令牌。文档中的远程图片仍按原有方式访问图片服务器，浏览器下载属于外部应用的网络行为。隐私说明：https://github.com/AkiNariT/Markdown-Editor-Mindmap/blob/v0.1.26/PRIVACY.md
+0.1.26 公开预览版发布页：https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.26
 
 Windows 使用
 窗口会记住普通大小、位置与最大化状态；重开时按当前屏幕可用区域校正。系统缩放使用 Electron 的设备独立坐标，文档 Ctrl+滚轮缩放仍单独保留。连续从资源管理器打开文件时会排队处理，重复文件复用已有标签。
-需要“打开方式”和快捷方式时，在固定位置解压整个程序目录，再双击 Register-MD.cmd；只为当前用户注册，无需管理员权限。右键 .md、.markdown 或 .mdmap → 打开方式 → MD；要双击直接打开，可在 Windows 的“选择其他应用”中自行设置始终使用 MD。注册脚本不会替换已有默认应用。
-也可在右上角“更多操作”（…）→ 设置 →“设置默认打开方式”注册当前程序及开始菜单入口并打开 Windows 设置，再由你为 .md 和 .markdown 选择 MD；默认应用由 Windows 确认。此按钮不创建桌面快捷方式。移动程序目录后请在新位置再次点击。
-若 Windows 按应用名称搜索不到 MD，请按 .md 或 .markdown 文件类型设置；也可右键 Markdown 文件 → 打开方式 → 选择其他应用 → 在电脑上选择应用，找到解压目录中的 MD.exe，并选择始终使用。
+在右上角“更多操作”（…）→ 设置 →“设置默认打开方式”注册当前程序及开始菜单入口并打开 Windows 设置，再由你为 .md 和 .markdown 选择 MD；默认应用由 Windows 确认。单文件版注册的是你保存的外层 EXE。此按钮不创建桌面快捷方式；单文件版可直接复制文件到桌面。移动或改名后请从新位置再次设置。
+若 Windows 按应用名称搜索不到 MD，请按 .md 或 .markdown 文件类型设置；也可右键 Markdown 文件 → 打开方式 → 选择其他应用 → 在电脑上选择应用，找到你的单文件 EXE，或完整文件夹中的 MD.exe，并选择始终使用。
 自动注册失败时，会显示具体原因；“查看错误详情”保留错误代码与系统输出。仍可点击“打开系统设置”继续手动选择，或点击“复制程序路径”，在选择应用的文件名栏粘贴。成功打开设置不代表已改为默认应用；若你已设置成功，无需反复注册。
-Unregister-MD.cmd 删除本目录对应的注册与快捷方式。移动或删除程序前先取消注册，移动或升级到新目录后重新注册。直接双击 MD.exe 始终可以运行。
-注册脚本支持 -DryRun 预览；windows-integration.ps1 可阅读具体操作。应用本身不会自动注册文件关联。
+仅文件夹 ZIP 版：需要“打开方式”和快捷方式时，在固定位置解压整个目录，再双击 Register-MD.cmd；只为当前用户注册，无需管理员权限。右键 .md、.markdown 或 .mdmap → 打开方式 → MD。Unregister-MD.cmd 删除本目录对应的注册与快捷方式；移动或删除程序前先取消注册，移动或升级到新目录后重新注册。注册脚本支持 -DryRun 预览；windows-integration.ps1 可阅读具体操作。
+程序启动时不会自动注册文件关联，注册也不会代替你确认 Windows 默认应用。
 
 语言设置
 右上角“更多操作”（…）→ 设置 → 语言，可选简体中文或 English。切换立即生效，重启后保留；已有文档、节点文字和未保存内容保持原样。英文界面新建的欢迎文档与 SKILL 模板使用英文。English guide: README.en.txt。
@@ -88,7 +90,7 @@ Mermaid、数学公式等不提供图形或公式渲染；代码块显示原有�
 构建信息
 Electron 44.5.1，Tiptap 3.31.4。此个人构建未进行代码签名。
 已有文件重命名使用系统自带的 Windows PowerShell 调用不覆盖目标的文件移动接口。
-已有原生测试环境为 Windows 11 Pro x64（10.0.26100）。Windows 10 是兼容目标，未在独立 Win10 实机/虚拟机验证；多台实体显示器、不同输入法与 ARM 原生运行未逐一验证。强制 DPI 测试属于模拟缩放，不等同于实际多屏混合 DPI 测试。本版本实际执行范围：https://github.com/AkiNariT/Markdown-Editor-Mindmap/blob/v0.1.25/docs/VALIDATION-0.1.25.md
+已有原生测试环境为 Windows 11 Pro x64（10.0.26100）。Windows 10 是兼容目标，未在独立 Win10 实机/虚拟机验证；多台实体显示器、不同输入法与 ARM 原生运行未逐一验证。强制 DPI 测试属于模拟缩放，不等同于实际多屏混合 DPI 测试。本版本实际执行的检查与限制：https://github.com/AkiNariT/Markdown-Editor-Mindmap/blob/v0.1.26/docs/VALIDATION-0.1.26.md
 本项目主要借助 AI 工具开发。源码采用 MIT 许可证，第三方依赖使用各自许可证。macOS 版本列入后续计划，目前没有 Mac 下载包，尚未确定发布日期。
 
 源码开发
@@ -112,6 +114,8 @@ npm run test:position：检查阅读与编辑切换保持当前位置，覆盖�
 npm run test:tabs：检查多文档独立位置、正文、模式与撤销历史，重复打开、同名文件、关闭保存与取消、后台 SKILL 错误、另存冲突、退出输入保护、快捷键及窄窗口标签滚动。
 npm run test:source：检查完整源码查看、源码/正文/对照切换、实时预览、BOM/CRLF 与原标记保存、源码撤销、正文撤销恢复原注释、跨模式副本保护、后台保存、另存图片路径、同步滚动、宽窄布局、黑色外观、SKILL 校验与退出输入冻结。
 npm run package：打包 Windows x64 便携目录。源代码自带生成好的 icon.ico。
+npm run package:portable：构建完整文件夹，再生成 .packaged/portable/MD-Windows-x64-版本号.exe 单文件便携包。
+npm run test:portable：使用隔离测试资料运行单文件版原生检查；可用 MOYE_PORTABLE_EXE 指定要测试的单文件 EXE。
 npm run test:zoom：检查真实 Ctrl+滚轮缩放、比例/范围/复原、普通滚动、三种模式、阅读与源码位置、横向长行、独立标签、另存为、窄窗口和文件未修改。
 npm run test:compare：检查两侧编辑、双向同步、格式按钮、共享撤销/重做、跨模式撤销、延迟回包与本地图片、BOM/YAML保存、副本保护、位置、多标签、窄窗口、SKILL字段、Chromium模拟中文组字及退出冻结。
 npm run test:naming：检查顶部命名与 F2、新草稿先命名和保存默认名称、已有文件改名、冲突保护、正文与历史保留、目录别名和窄窗口。

@@ -2,9 +2,9 @@
 
 Markdown-Editor-Mindmap (MD) is a minimal desktop Markdown reader and editor with visual editing, source/split views, and mindmaps linked to local Markdown files.
 
-[简体中文](README.md) · [Download 0.1.25](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.25) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
+[简体中文](README.md) · [Download 0.1.26](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.26) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
-**New in 0.1.25:** Double-click an unlinked mindmap node to write a Markdown draft; its first successful save creates and links the file. Windows default-app settings now distinguish registration from opening Settings, with independent manual settings, program-path copying and error details. This public preview includes the earlier local 0.1.24 improvements; see the [changelog](CHANGELOG.md) and [validation record](docs/VALIDATION-0.1.25.md).
+**New in 0.1.26:** The single-file portable `MD-Windows-x64-0.1.26.exe` can be copied to your Desktop and run on its own. You can rename it. An “Opening MD” message appears during startup; default-app registration and program-path copying use the outer EXE you saved. The complete folder ZIP remains available. See the [changelog](CHANGELOG.md) and [validation record](docs/VALIDATION-0.1.26.md).
 
 ## Development approach
 
@@ -12,13 +12,27 @@ This project is developed primarily with AI tools.
 
 ## Download
 
-**[Windows x64 portable ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.25/MD-Windows-x64-0.1.25.zip)**
+### Recommended: single-file EXE
 
-Extract the whole archive and run `MD.exe`. Keep the application folder intact. For an upgrade, extract the new version to a separate folder, save your work and close the previous version normally, then run the new executable. Run only one instance with the same user data. Node.js is not required to use the download.
+**[Download the Windows x64 single-file EXE](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.26/MD-Windows-x64-0.1.26.exe)**
 
-Version **0.1.25 is a public preview**. Windows 10/11 x64 are the targets; existing desktop validation uses Windows 11 x64. A separate Windows 10 machine has not been tested. The portable build is unsigned and has no installer. See the [validation record](docs/VALIDATION-0.1.25.md) for the checks actually performed for this version. Downloads, source, standalone templates and checksums are on the [0.1.25 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.25).
+1. Put `MD-Windows-x64-0.1.26.exe` on your Desktop or in another convenient location.
+2. Double-click it. No installation, administrator access or additional runtime download is required.
+3. Each launch unpacks its runtime into a local temporary folder. Please wait while “Opening MD” is shown; startup time depends on your disk and system load. Before upgrading, save your work and close the old version normally, then open the new file.
 
-Default app: Open **More (…) → Settings → Set default app** to register the current application locally and open Windows Settings, then choose MD for `.md` and `.markdown`. If registration fails, use Open Windows Settings to continue manually. Copy program path supplies the path for the system file picker, and View error details shows the cause and error code. Windows confirms the final default selection. Repeat this from the new location after upgrading or moving the portable folder.
+Settings and draft backups remain in `%APPDATA%\MD` for the current Windows user. Copying the executable does not transfer this data. Save your documents in your own folders. If you set MD as the default app, repeat that setup after moving or renaming the executable.
+
+### Alternative: complete folder ZIP
+
+**[Download the Windows x64 complete folder ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.26/MD-Windows-x64-0.1.26.zip)**
+
+Extract the whole archive and run `MD.exe`. Keep the application folder intact: the `MD.exe` inside a folder ZIP needs its accompanying files and cannot be copied on its own. For an upgrade, extract the new version to a separate folder, save your work and close the previous version normally, then run the new executable. Run only one instance with the same user data. Node.js is not required to use the download.
+
+The current download, **0.1.26, is a public preview**. Windows 10/11 x64 are the targets; existing desktop validation uses Windows 11 x64. A separate Windows 10 machine has not been tested. The portable builds are unsigned and have no installer. See the [validation record](docs/VALIDATION-0.1.26.md) for this release's actual checks and limitations. Application downloads, source, standalone templates and checksums are on the [0.1.26 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.26).
+
+Default app: Open **More (…) → Settings → Set default app** to register the current application locally and open Windows Settings, then choose MD for `.md` and `.markdown`. If registration fails, use Open Windows Settings to continue manually. Copy program path supplies the path for the system file picker, and View error details shows the cause and error code. Windows confirms the final default selection. Repeat this from the new location after upgrading, moving or renaming the application.
+
+The 0.1.26 single-file version registers the outer EXE that you saved. Copy program path also uses that file's location.
 
 To check for updates, open **More (…) → Check for updates** or **Settings → Check for updates**, then click the check button in the dialog. This manually retrieves public releases from this repository, including public prereleases, and shows your version, the newest compatible Windows x64 version and plain-text release notes. The release-page button opens a verified official release page in your browser. Download and upgrade using the steps above. MD does not check automatically in the background or automatically download, install or restart. Close the dialog to continue editing and saving documents.
 
@@ -55,6 +69,7 @@ npm run build
 npm start
 node --test --test-concurrency=1 tests/*.test.mjs
 npm run package
+npm run package:portable
 ```
 
-Packaging produces `.packaged/MD-win32-x64`. The first dependency installation/package operation may download Electron. Read [CONTRIBUTING.md](CONTRIBUTING.md), [release maintenance](docs/RELEASING.md), [validation](docs/VALIDATION-0.1.25.md) and [security reporting](SECURITY.md) before contributing.
+`npm run package` produces the folder build in `.packaged/MD-win32-x64`; `npm run package:portable` builds that folder and then `.packaged/portable/MD-Windows-x64-VERSION.exe`. Initial dependency installation/builds may download runtimes and packaging tools. The finished single-file app does not download runtime components when launched. Read [CONTRIBUTING.md](CONTRIBUTING.md), [release maintenance](docs/RELEASING.md), [0.1.26 validation](docs/VALIDATION-0.1.26.md) and [security reporting](SECURITY.md) before contributing.

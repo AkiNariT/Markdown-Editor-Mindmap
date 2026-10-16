@@ -11,4 +11,7 @@ for (const [location, metadata] of Object.entries(lock.packages)) {
   if (!licenseText) throw new Error('Missing license text for ' + location);
   notices.push(`\n----- ${location.replace(/^node_modules\//, '')} ${metadata.version} -----\n${licenseText}\n`);
 }
-await writeFile('THIRD_PARTY_NOTICES.txt', notices.join('\n'), 'utf8');
+// The single-file launcher embeds electron-builder's NSIS extraction macros.
+// Their notice belongs in the runtime too, despite this being a build tool.
+notices.push(`\n----- electron-builder NSIS launcher templates -----\n${await readFile('node_modules/electron-builder/LICENSE', 'utf8')}\n`);
+await writeFile('THIRD_PARTY_NOTICES.txt', notices.join('\n').trimEnd() + '\n', 'utf8');

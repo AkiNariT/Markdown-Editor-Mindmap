@@ -32,10 +32,11 @@ $owner = 'MD.WindowsIntegration.v1'
 $appId = 'Moye.MD'
 $registeredApplication = 'MD'
 $installing = $Action -ne 'Uninstall'
-if ($ExecutablePath -match '["\r\n]' -or -not [IO.Path]::IsPathRooted($ExecutablePath)) { throw 'ExecutablePath must be an absolute path without quotes or newlines.' }
+if ($ExecutablePath -match '[\x00-\x1f\x7f"<>|?*]' -or $ExecutablePath -notmatch '^(?:[a-zA-Z]:[\\/]|\\\\[^\\]+\\[^\\]+)' -or $ExecutablePath.Substring(2).Contains(':')) { throw 'ExecutablePath must be an absolute path without quotes, control characters or alternate streams.' }
 $exe = [IO.Path]::GetFullPath($ExecutablePath)
-if ([IO.Path]::GetFileName($exe) -ine 'MD.exe') { throw 'ExecutablePath must point to MD.exe.' }
-if ($installing -and -not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "MD.exe does not exist: $exe" }
+if ([IO.Path]::GetExtension($exe) -ine '.exe') { throw 'ExecutablePath must point to an executable.' }
+if ($installing -and -not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "$([IO.Path]::GetFileName($exe)) does not exist: $exe" }
+$applicationRegistration = 'Applications\' + [IO.Path]::GetFileName($exe)
 if ([bool]$TestId -ne [bool]$TestDirectory) { throw 'TestId and TestDirectory must be supplied together.' }
 $registryRoot = 'HKCU:\Software\Classes'
 $applicationRoot = 'HKCU:\Software\Moye.MD'
@@ -59,7 +60,7 @@ $icon = '"' + $exe + '",0'
 $registrations = @(
     @{ Name='Moye.MD.Markdown'; Label='Markdown document'; Extensions=@('.md','.markdown') },
     @{ Name='Moye.MD.Mindmap'; Label='MD mind map'; Extensions=@('.mdmap') },
-    @{ Name='Applications\MD.exe'; Label='MD'; Extensions=@() }
+    @{ Name=$applicationRegistration; Label='MD'; Extensions=@() }
 )
 function Read-Value([string]$Path, [string]$Name) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
@@ -74,17 +75,19 @@ function Owns-Registration([string]$Path, [bool]$ExactExecutable) {
 function Entry([string]$Path, [string]$Name, $Value, [string]$Kind='String') {
     return @{ path=$Path; name=$Name; value=$Value; kind=$Kind }
 }
-function Values-For($Registration) {
+function Values-For($Registration, [string]$TargetExecutable=$exe) {
     $key = Join-Path $registryRoot $Registration.Name
+    $targetCommand = '"' + $TargetExecutable + '" "%1"'
+    $targetIcon = '"' + $TargetExecutable + '",0'
     $values = @(
         (Entry $key '' $Registration.Label),
         (Entry $key 'MDIntegrationOwner' $owner),
-        (Entry $key 'MDExecutablePath' $exe),
+        (Entry $key 'MDExecutablePath' $TargetExecutable),
         (Entry $key 'AppUserModelID' $appId),
-        (Entry (Join-Path $key 'DefaultIcon') '' $icon),
-        (Entry (Join-Path $key 'shell\open\command') '' $command)
+        (Entry (Join-Path $key 'DefaultIcon') '' $targetIcon),
+        (Entry (Join-Path $key 'shell\open\command') '' $targetCommand)
     )
-    if ($Registration.Name -eq 'Applications\MD.exe') {
+    if ($Registration.Name -eq ('Applications\' + [IO.Path]::GetFileName($TargetExecutable))) {
         $values += Entry $key 'FriendlyAppName' 'MD'
         foreach ($extension in @('.md','.markdown','.mdmap')) { $values += Entry (Join-Path $key 'SupportedTypes') $extension '' }
     } else {
@@ -93,7 +96,7 @@ function Values-For($Registration) {
         $values += Entry $application 'ApplicationName' $registeredApplication
         $values += Entry $application 'ApplicationCompany' 'MD'
         $values += Entry $application 'ApplicationDescription' 'Markdown reader and editor'
-        $values += Entry $application 'ApplicationIcon' $icon
+        $values += Entry $application 'ApplicationIcon' $targetIcon
         $values += Entry $application 'AppUserModelID' $appId
         foreach ($extension in $Registration.Extensions) { $values += Entry (Join-Path $registryRoot "$extension\OpenWithProgids") $Registration.Name '' }
     }
@@ -119,6 +122,7 @@ function Capability-Values {
     )
 }
 $changes = @()
+$retiredChanges = @()
 $skipped = @()
 foreach ($registration in $registrations) {
     $key = Join-Path $registryRoot $registration.Name
@@ -138,6 +142,18 @@ if ($installing) {
     if ((Test-Path -LiteralPath $capabilitiesRoot) -and -not (Owns-Capabilities $false)) { throw "Registration conflict: $capabilitiesRoot. Existing data was not changed." }
     $existing = Read-Value $registeredApplicationsRoot $registeredApplication
     if ($null -ne $existing -and (-not (Test-Path -LiteralPath $capabilitiesRoot) -or $existing -cne $capabilitiesRelative)) { throw "Registration conflict: $registeredApplicationsRoot $registeredApplication. Existing data was not changed." }
+    # Follow only the previous path in our verified capabilities record. Never
+    # scan Applications or retire an entry whose owner/path/command was changed.
+    if (Owns-Capabilities $false) {
+        $previousExecutable = Read-Value $capabilitiesRoot 'MDExecutablePath'
+        if ($previousExecutable -is [string] -and $previousExecutable -notmatch '[\x00-\x1f\x7f"<>|?*]' -and $previousExecutable -match '^(?:[a-zA-Z]:[\\/]|\\\\[^\\]+\\[^\\]+)' -and -not $previousExecutable.Substring(2).Contains(':') -and [IO.Path]::GetExtension($previousExecutable) -ieq '.exe') {
+            $previousRegistration = 'Applications\' + [IO.Path]::GetFileName($previousExecutable)
+            $previousKey = Join-Path $registryRoot $previousRegistration
+            if ($previousRegistration -ine $applicationRegistration -and (Owns-Registration $previousKey $false) -and (Read-Value $previousKey 'MDExecutablePath') -ieq $previousExecutable) {
+                $retiredChanges = @(Values-For @{ Name=$previousRegistration; Label='MD'; Extensions=@() } $previousExecutable)
+            }
+        }
+    }
     $changes += Capability-Values
 } elseif (Owns-Capabilities $true) {
     $changes += Capability-Values
@@ -237,7 +253,34 @@ foreach ($directory in $shortcutDirectories) {
 $plan = [ordered]@{
     action=$Action; dryRun=[bool]$DryRun; executable=$exe; appUserModelId=$appId; registeredApplication=$registeredApplication
     registryRoot=$registryRoot; command=$command; extensions=@('.md','.markdown','.mdmap')
-    changesDefaults=$false; registryValues=$changes; shortcuts=$shortcuts; skipped=$skipped
+    changesDefaults=$false; registryValues=$changes; retiredRegistryValues=$retiredChanges; shortcuts=$shortcuts; skipped=$skipped
+}
+function Remove-MatchingValues($Entries) {
+    foreach ($entry in $Entries) {
+        if ((Read-Value $entry.path $entry.name) -ceq $entry.value) {
+            $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($entry.path.Substring(6), $true)
+            try { $key.DeleteValue($entry.name, $false) } finally { $key.Dispose() }
+        }
+    }
+}
+function Remove-EmptyRegistrationKeys($Entries) {
+    # Only prune empty keys in known registration branches, never recurse.
+    $keys = @()
+    foreach ($entry in $Entries) {
+        $keyPath = $entry.path
+        $boundary = $null
+        if ($keyPath.StartsWith($registryRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { $boundary = $registryRoot }
+        elseif ($keyPath.StartsWith($applicationRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { $boundary = Split-Path -Parent $applicationRoot }
+        if ($boundary) {
+            while ($keyPath.Length -gt $boundary.Length) { $keys += $keyPath; $keyPath = Split-Path -Parent $keyPath }
+        }
+    }
+    foreach ($keyPath in ($keys | Select-Object -Unique | Sort-Object -Property Length -Descending)) {
+        if (Test-Path -LiteralPath $keyPath) {
+            $key = Get-Item -LiteralPath $keyPath
+            if ($key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0) { Remove-Item -LiteralPath $keyPath }
+        }
+    }
 }
 if (-not $DryRun) {
     foreach ($entry in $changes) {
@@ -245,10 +288,7 @@ if (-not $DryRun) {
             $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($entry.path.Substring(6))
             try { $key.SetValue($entry.name, $entry.value, [Microsoft.Win32.RegistryValueKind]::$($entry.kind)) }
             finally { $key.Dispose() }
-        } elseif ((Read-Value $entry.path $entry.name) -ceq $entry.value) {
-            $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($entry.path.Substring(6), $true)
-            try { $key.DeleteValue($entry.name, $false) } finally { $key.Dispose() }
-        }
+        } else { Remove-MatchingValues @($entry) }
     }
     foreach ($linkPath in $shortcuts) {
         if ($installing) {
@@ -258,25 +298,9 @@ if (-not $DryRun) {
             [MDWindowsShell]::SetAppId($linkPath, $appId)
         } else { Remove-Item -LiteralPath $linkPath }
     }
-    if ($Action -eq 'Uninstall') {
-        # Only prune empty keys in known registration branches, never recurse.
-        $keys = @()
-        foreach ($entry in $changes) {
-            $keyPath = $entry.path
-            $boundary = $null
-            if ($keyPath.StartsWith($registryRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { $boundary = $registryRoot }
-            elseif ($keyPath.StartsWith($applicationRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { $boundary = Split-Path -Parent $applicationRoot }
-            if ($boundary) {
-                while ($keyPath.Length -gt $boundary.Length) { $keys += $keyPath; $keyPath = Split-Path -Parent $keyPath }
-            }
-        }
-        foreach ($keyPath in ($keys | Select-Object -Unique | Sort-Object -Property Length -Descending)) {
-            if (Test-Path -LiteralPath $keyPath) {
-                $key = Get-Item -LiteralPath $keyPath
-                if ($key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0) { Remove-Item -LiteralPath $keyPath }
-            }
-        }
-    }
+    if ($Action -eq 'Uninstall') { Remove-EmptyRegistrationKeys $changes }
+    Remove-MatchingValues $retiredChanges
+    Remove-EmptyRegistrationKeys $retiredChanges
     if (-not $TestId) { [MDWindowsShell]::Notify() }
 }
 $plan | ConvertTo-Json -Depth 8

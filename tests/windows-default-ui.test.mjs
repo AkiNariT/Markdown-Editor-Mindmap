@@ -54,7 +54,7 @@ test('both failures retain diagnostics as bounded text and provide the manual Se
   }) });
   await f.click('default-app');
   assert.match(f.$('default-app-status').textContent, /默认应用/);
-  assert.match(f.$('default-app-cause').textContent, /完整解压/);
+  assert.match(f.$('default-app-cause').textContent, /重新下载完整程序/);
   assert.equal(f.$('default-app-details').hidden, false);
   assert.match(f.$('default-app-diagnostic').textContent, /<img/);
   assert.match(f.$('default-app-diagnostic').textContent, /Settings launch failed/);

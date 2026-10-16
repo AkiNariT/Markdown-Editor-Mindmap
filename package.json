@@ -1,7 +1,7 @@
 {
   "name": "moye",
   "productName": "MD",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "极简 Markdown 阅读与可视化编辑器",
   "main": "electron/main.cjs",
   "type": "module",
@@ -35,7 +35,9 @@
     "test:language": "node tests/language.cjs",
     "test:updates": "node tests/updates.cjs",
     "test:mindmap-drafts": "node tests/mindmap-drafts.cjs",
-    "test:mindmap-features": "node tests/mindmap-features.cjs"
+    "test:mindmap-features": "node tests/mindmap-features.cjs",
+    "package:portable": "npm run build && npm run package && node scripts/package-portable.mjs",
+    "test:portable": "node tests/portable.cjs"
   },
   "license": "MIT",
   "author": "MD contributors",
@@ -47,7 +49,13 @@
   "bugs": {
     "url": "https://github.com/AkiNariT/Markdown-Editor-Mindmap/issues"
   },
-  "keywords": ["markdown", "editor", "mindmap", "electron", "windows"],
+  "keywords": [
+    "markdown",
+    "editor",
+    "mindmap",
+    "electron",
+    "windows"
+  ],
   "dependencies": {
     "@tiptap/core": "3.31.4",
     "@tiptap/extension-code-block-lowlight": "3.31.4",
@@ -63,6 +71,7 @@
   "devDependencies": {
     "@electron/packager": "20.3.0",
     "electron": "44.5.1",
+    "electron-builder": "26.15.3",
     "esbuild": "0.28.2",
     "jsdom": "30.1.2",
     "playwright": "1.58.2"

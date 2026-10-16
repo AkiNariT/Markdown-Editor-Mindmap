@@ -39,6 +39,16 @@ test('registers the running portable app through a fixed, hidden PowerShell invo
   assert.deepEqual(f.opened, ['ms-settings:defaultapps?registeredAppUser=MD']);
 });
 
+test('single-file default registration targets the renamed launcher while reading its bundled helper', async () => {
+  const launcher = "C:\\Desktop\\MD Windows 0.1.26 (1) & ' 中文.exe";
+  const runtime = 'C:\\Temp\\ns123.tmp\\app\\MD.exe';
+  const f = fixture({ executablePath: launcher, runtimeExecutablePath: runtime });
+  assert.equal((await openWindowsDefaultApps(f.options)).registration.status, 'registered');
+  const [, args] = f.commands[0];
+  assert.equal(args[5], 'C:\\Temp\\ns123.tmp\\app\\windows-integration.ps1');
+  assert.equal(args.at(-1), launcher);
+});
+
 for (const release of ['10.0.19045', '10.0.22000', '10.0.22621', 'unknown']) {
   test(`uses the general default-app page for ${release}, without assuming a cumulative update is installed`, async () => {
     const f = fixture({ release });

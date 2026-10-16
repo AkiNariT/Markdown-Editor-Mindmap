@@ -37,10 +37,71 @@ test('Windows shell plan is per-user, quoted, explicit and dry-run has no side e
     assert.equal(plan.dryRun, true);
     assert.equal(powershell(`Test-Path -LiteralPath ${quote(f.root)}`), 'False');
     assert.equal(existsSync(join(f.dir, 'Desktop', 'MD.lnk')), false);
-    const realPlan = json(`& ${quote(helper)} -Action Install -ExecutablePath ${quote(f.exe)} -DryRun`);
-    assert.equal(realPlan.registryRoot, 'HKCU:\\Software\\Classes');
-    assert.equal(realPlan.changesDefaults, false);
-    assert.equal(JSON.stringify(realPlan).includes('UserChoice'), false);
+    assert.equal(plan.changesDefaults, false);
+    assert.equal(JSON.stringify(plan).includes('UserChoice'), false);
+  } finally { f.cleanup(); }
+});
+
+test('renamed single-file launcher remains the quoted registration and shortcut target', { skip: process.platform !== 'win32' }, () => {
+  const f = fixture();
+  try {
+    const renamed = join(f.dir, "MD Portable 中文 (1) & ' app.exe");
+    copyFileSync(f.exe, renamed);
+    const plan = f.run('RegisterDefaultApps', '-DryRun', renamed);
+    assert.equal(plan.executable, renamed);
+    assert.equal(plan.command, `"${renamed}" "%1"`);
+    assert.equal(plan.registryValues.some(entry => entry.path === f.classes + "\\Applications\\MD Portable 中文 (1) & ' app.exe\\shell\\open\\command" && entry.value === `"${renamed}" "%1"`), true);
+    assert.deepEqual(plan.shortcuts, [join(f.dir, 'Start Menu', 'MD.lnk')]);
+    assert.equal(powershell(`Test-Path -LiteralPath ${quote(f.root)}`), 'False');
+    f.run('RegisterDefaultApps', '', renamed);
+    assert.equal(powershell(`(Get-Item ${quote(f.classes + '\\Moye.MD.Markdown\\shell\\open\\command')}).GetValue('')`), `"${renamed}" "%1"`);
+    assert.equal(existsSync(join(f.dir, 'Start Menu', 'MD.lnk')), true);
+    f.run('Uninstall', '', renamed);
+    assert.equal(existsSync(join(f.dir, 'Start Menu', 'MD.lnk')), false);
+  } finally { f.cleanup(); }
+});
+
+test('renaming the launcher retires only its previous owned application values and preserves foreign additions', { skip: process.platform !== 'win32' }, () => {
+  const f = fixture();
+  try {
+    const renamed = join(f.dir, 'MD new name.exe'); copyFileSync(f.exe, renamed);
+    const old = f.classes + '\\Applications\\MD.exe';
+    const invoke = (action, target) => `& ${quote(helper)} -Action ${action} -ExecutablePath ${quote(target)} -TestId ${quote(f.id)} -TestDirectory ${quote(f.dir)} | Out-Null`;
+    const result = json(`
+      ${invoke('RegisterDefaultApps', f.exe)}
+      New-ItemProperty ${quote(old)} -Name ForeignValue -Value keep | Out-Null
+      Set-ItemProperty ${quote(old)} -Name FriendlyAppName -Value 'foreign label'
+      New-Item ${quote(old + '\\ForeignChild')} -Force | Out-Null
+      ${invoke('RegisterDefaultApps', renamed)}
+      $retired = -not (Test-Path -LiteralPath ${quote(old + '\\SupportedTypes')})
+      $foreign = (Get-Item ${quote(old)}).GetValue('ForeignValue')
+      $label = (Get-Item ${quote(old)}).GetValue('FriendlyAppName')
+      $child = Test-Path -LiteralPath ${quote(old + '\\ForeignChild')}
+      ${invoke('Uninstall', f.exe)}
+      $current = (Get-Item ${quote(f.classes + '\\Moye.MD.Markdown\\shell\\open\\command')}).GetValue('')
+      ${invoke('Uninstall', renamed)}
+      @{retired=$retired; foreign=$foreign; label=$label; child=$child; current=$current; oldCommandExists=(Test-Path -LiteralPath ${quote(old + '\\shell\\open\\command')}); newRemoved=(-not (Test-Path -LiteralPath ${quote(f.classes + '\\Applications\\MD new name.exe')}))} | ConvertTo-Json -Compress
+    `);
+    assert.equal(result.retired, true, 'old owned file-type advertisement must no longer point to the retired launcher');
+    assert.equal(result.foreign, 'keep'); assert.equal(result.label, 'foreign label'); assert.equal(result.child, true);
+    assert.equal(result.oldCommandExists, false);
+    assert.equal(result.current, `"${renamed}" "%1"`); assert.equal(result.newRemoved, true);
+  } finally { f.cleanup(); }
+});
+
+test('launcher migration does not retire an old application entry with a changed owner command', { skip: process.platform !== 'win32' }, () => {
+  const f = fixture();
+  try {
+    const renamed = join(f.dir, 'MD renamed.exe'); copyFileSync(f.exe, renamed);
+    const oldCommand = f.classes + '\\Applications\\MD.exe\\shell\\open\\command';
+    const invoke = target => `& ${quote(helper)} -Action RegisterDefaultApps -ExecutablePath ${quote(target)} -TestId ${quote(f.id)} -TestDirectory ${quote(f.dir)} | Out-Null`;
+    const result = json(`
+      ${invoke(f.exe)}
+      Set-Item ${quote(oldCommand)} -Value 'foreign-command'
+      ${invoke(renamed)}
+      @{old=(Get-Item ${quote(oldCommand)}).GetValue(''); current=(Get-Item ${quote(f.classes + '\\Moye.MD.Markdown\\shell\\open\\command')}).GetValue('')} | ConvertTo-Json -Compress
+    `);
+    assert.equal(result.old, 'foreign-command'); assert.equal(result.current, `"${renamed}" "%1"`);
   } finally { f.cleanup(); }
 });
 

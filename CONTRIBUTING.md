@@ -34,6 +34,17 @@ npm run test:mindmap-features
 Remove-Item Env:MOYE_EXE
 ```
 
+构建和检查单文件版：
+
+```powershell
+npm run package:portable
+$env:MOYE_PORTABLE_EXE = (Resolve-Path '.packaged/portable/MD-Windows-x64-0.1.26.exe').Path
+npm run test:portable
+Remove-Item Env:MOYE_PORTABLE_EXE
+```
+
+将文件名版本替换为当前 `package.json` 版本。`package:portable` 先构建完整文件夹，再包装单文件 EXE；`test:portable` 使用隔离测试资料。验证独立复制与改名后的 EXE、外部文件打开、恢复及退出清理；默认应用注册必须指向外层 EXE，不能保存临时运行路径。单文件启动无需联网下载组件，构建机器首次准备打包工具则可能需要联网。
+
 ## 需要保持的行为
 
 - 同一文档的阅读位置、草稿、撤销与标签状态不能因切换而丢失。
@@ -41,6 +52,7 @@ Remove-Item Env:MOYE_EXE
 - YAML、源码标记、图片相对路径与导图关联必须按已有保护规则处理。
 - UI 文案需提供简体中文与 English；新增导图字段需验证并明确格式版本。
 - 不把个人文档、恢复目录、令牌、依赖目录或本地测试输出提交到仓库。
+- 单文件版与文件夹版共享既有用户数据目录；复制 EXE 不应复制或清空用户草稿。ZIP 中的 MD.exe 仍依赖完整运行目录。
 
 ## Pull request
 

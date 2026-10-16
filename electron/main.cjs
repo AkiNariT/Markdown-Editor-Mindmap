@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const { randomUUID } = require('node:crypto');
 const { pathToFileURL, fileURLToPath } = require('node:url');
+const { applicationLaunchContext, secondInstanceWorkingDirectory } = require('../src/application-launch.mjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'moye-image', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const dataArg = process.argv.find(arg => arg.startsWith('--user-data-dir='));
@@ -10,7 +11,8 @@ if (dataArg) app.setPath('userData', dataArg.slice('--user-data-dir='.length));
 let win, files, helpers, imageHelpers, mindmap, mindmapFiles, mindmapCreate, recovery, recoveryStore, windowState, windowStore, openQueue, openArguments, doc, closing = false, busy = false;
 let recoveryNotice = null, rendererReady = false, openingInitial = false, windowSaveTimer, lastWindowState, correctingWindow = false;
 let t = message => message, getLocale = () => 'zh-CN', setLocale, settingsStore, updateChecker, openWindowsDefaultApps, openWindowsDefaultSettings;
-const pendingOpenRequests = [{ argv: process.argv, cwd: process.cwd() }];
+const launchContext = applicationLaunchContext({ isPackaged: app.isPackaged });
+const pendingOpenRequests = [{ argv: process.argv, cwd: launchContext.cwd }];
 let checkpointInProgress = false, closeAfterCheckpoint = false;
 let checkpointFinished = Promise.resolve();
 const documents = new Map();
@@ -339,9 +341,10 @@ function handle(name, callback) {
   });
 }
 // Electron's lock is scoped to userData, so isolated profiles remain independent.
-const ownsProfile = app.requestSingleInstanceLock();
+const ownsProfile = app.requestSingleInstanceLock({ cwd: launchContext.cwd });
 if (!ownsProfile) app.quit();
-app.on('second-instance', (_event, argv, cwd) => {
+app.on('second-instance', (_event, argv, cwd, additionalData) => {
+  cwd = secondInstanceWorkingDirectory(additionalData, cwd);
   if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
   if (openQueue) openQueue.enqueue(openArguments(argv, cwd));
   else pendingOpenRequests.push({ argv, cwd });
@@ -389,17 +392,20 @@ if (ownsProfile) app.whenReady().then(async () => {
     catch (error) {
       const messages = {
         WINDOWS_DEFAULT_UNSUPPORTED: t('默认打开方式设置目前仅支持 Windows。'),
-        WINDOWS_DEFAULT_DEVELOPMENT: t('请在打包后的 MD.exe 中设置默认打开方式。'),
-        WINDOWS_DEFAULT_REGISTRATION: t('程序或 Windows 路径无效，请从完整解压的 MD.exe 重试。'),
+        WINDOWS_DEFAULT_DEVELOPMENT: t('请在打包后的 MD 程序中设置默认打开方式。'),
+        WINDOWS_DEFAULT_REGISTRATION: t('程序或 Windows 路径无效，请从保存的 MD 程序重新启动后重试。'),
       };
       return { error: messages[error.message] || t('无法打开默认应用设置，请稍后重试。'), code: Object.hasOwn(messages, error.message) ? error.message : 'WINDOWS_DEFAULT_FAILED' };
     }
   }
-  handle('windows-default-app', () => defaultAppAction(() => openWindowsDefaultApps({ isPackaged: app.isPackaged, openExternal: uri => shell.openExternal(uri) })));
+  handle('windows-default-app', () => defaultAppAction(() => openWindowsDefaultApps({ isPackaged: app.isPackaged, executablePath: launchContext.executablePath, runtimeExecutablePath: launchContext.runtimeExecutablePath, openExternal: uri => shell.openExternal(uri) })));
   handle('windows-default-settings', () => defaultAppAction(() => openWindowsDefaultSettings({ openExternal: uri => shell.openExternal(uri) })));
   handle('copy-application-path', () => {
     // The renderer cannot provide clipboard text or an executable path.
-    try { clipboard.writeText(process.execPath); return { status: 'copied' }; }
+    try {
+      if (!launchContext.executablePath) throw new Error('Invalid launcher path');
+      clipboard.writeText(launchContext.executablePath); return { status: 'copied' };
+    }
     catch { return { error: t('无法复制程序路径，请稍后重试。'), code: 'WINDOWS_DEFAULT_COPY' }; }
   });
   handle('check-update', async () => {

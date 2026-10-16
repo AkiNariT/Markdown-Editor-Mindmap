@@ -3,6 +3,7 @@ import { access } from 'node:fs/promises';
 import { release as osRelease } from 'node:os';
 import { win32 as path } from 'node:path';
 import { promisify } from 'node:util';
+import { isWindowsAbsolutePath } from './application-launch.mjs';
 
 const execute = promisify(execFile);
 const settingsUri = 'ms-settings:defaultapps';
@@ -56,17 +57,18 @@ export async function openWindowsDefaultSettings({ openExternal, platform = proc
 // executable names, script arguments, registry keys, or URI values.
 export async function openWindowsDefaultApps({
   isPackaged, openExternal, executablePath = process.execPath,
+  runtimeExecutablePath = executablePath,
   platform = process.platform, release = osRelease(),
   systemRoot = process.env.SystemRoot, execFileImpl = execute, accessImpl = access,
 } = {}) {
   if (platform !== 'win32') throw new Error('WINDOWS_DEFAULT_UNSUPPORTED');
   if (isPackaged !== true) throw new Error('WINDOWS_DEFAULT_DEVELOPMENT');
-  if (typeof executablePath !== 'string' || !path.isAbsolute(executablePath)
-    || path.basename(executablePath).toLowerCase() !== 'md.exe' || /["\r\n]/.test(executablePath)
-    || typeof systemRoot !== 'string' || !path.isAbsolute(systemRoot)) {
+  if (!isWindowsAbsolutePath(executablePath) || path.extname(executablePath).toLowerCase() !== '.exe'
+    || !isWindowsAbsolutePath(runtimeExecutablePath) || path.basename(runtimeExecutablePath).toLowerCase() !== 'md.exe'
+    || !isWindowsAbsolutePath(systemRoot)) {
     throw new Error('WINDOWS_DEFAULT_REGISTRATION');
   }
-  const scriptPath = path.join(path.dirname(executablePath), 'windows-integration.ps1');
+  const scriptPath = path.join(path.dirname(runtimeExecutablePath), 'windows-integration.ps1');
   let registration, checkingScript = true;
   try {
     await accessImpl(scriptPath);

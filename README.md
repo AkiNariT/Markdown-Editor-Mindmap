@@ -4,9 +4,9 @@
 
 Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读与编辑器。直接编辑排版后的文字，也可以查看源码、双向对照，并用思维导图连接本地 Markdown 文件。
 
-[English](README.en.md) · [下载 0.1.25](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.25) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
+[English](README.en.md) · [下载 0.1.26](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.26) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
 
-**0.1.25 更新：** 双击导图未关联节点后先写 Markdown 草稿，首次保存成功后才关联文件。设置中新增 Windows 默认打开方式入口，分别显示自动注册与打开系统设置的结果，并提供手动设置、程序路径复制和错误详情。包含此前 0.1.24 本地版本的改进，详见 [更新记录](CHANGELOG.md) 与 [验证记录](docs/VALIDATION-0.1.25.md)。
+**0.1.26 更新：** 新增单文件便携版 `MD-Windows-x64-0.1.26.exe`，只复制这个文件到桌面即可双击运行，也可以改名。启动时显示“正在打开 MD”；默认应用注册与程序路径复制使用你保存的外层 EXE。保留完整文件夹 ZIP，详见 [更新记录](CHANGELOG.md) 与 [验证记录](docs/VALIDATION-0.1.26.md)。
 
 ## 开发方式
 
@@ -14,15 +14,29 @@ Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读�
 
 ## 下载与运行
 
-**[下载 Windows x64 便携版](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.25/MD-Windows-x64-0.1.25.zip)**
+### 推荐：单文件版
+
+**[下载 Windows x64 单文件版 EXE](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.26/MD-Windows-x64-0.1.26.exe)**
+
+1. 将 `MD-Windows-x64-0.1.26.exe` 放到桌面或其他常用位置。
+2. 双击即可使用。无需安装、管理员权限或额外下载运行环境。
+3. 每次启动会在本机临时目录展开运行文件。看到“正在打开 MD”时请等待，耗时取决于磁盘与系统负载。升级前先保存并正常退出旧版，再打开新版文件。
+
+设置与草稿仍保存在当前 Windows 用户的 `%APPDATA%\MD` 中；复制程序不会带走这些数据，文档仍需保存到自己的文件夹。如果已设置默认打开方式，移动或改名后请从新位置再次设置。
+
+### 可选：完整文件夹版
+
+**[下载 Windows x64 完整文件夹 ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.26/MD-Windows-x64-0.1.26.zip)**
 
 1. 解压整个 ZIP，双击其中的 `MD.exe`，无需安装 Node.js。
-2. 保留程序目录内的 DLL、resources 等文件；仅复制 EXE 无法正常运行。
+2. 保留程序目录内的 DLL、resources 等文件；ZIP 内的 `MD.exe` 需要这些配套文件，不能单独复制。
 3. 升级时，将新版完整解压到独立目录，保存并正常退出旧版，再打开新版。同一用户配置只运行一个实例。
 
-适配目标是 **Windows 10 / 11 x64**；已有原生桌面验证环境为 Windows 11 x64，尚未在独立 Windows 10 机器验证。本版为 **0.1.25 公开预览版**，便携包未签名，不含安装器。本版本实际执行的检查见 [验证记录](docs/VALIDATION-0.1.25.md)。下载包、源码、独立模板与 SHA256 校验清单见 [0.1.25 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.25)。
+适配目标是 **Windows 10 / 11 x64**；已有原生桌面验证环境为 Windows 11 x64，尚未在独立 Windows 10 机器验证。当前下载为 **0.1.26 公开预览版**，便携包未签名，不含安装器。本版本实际执行的检查与限制见 [验证记录](docs/VALIDATION-0.1.26.md)。软件下载、源码、独立模板与 SHA256 校验清单见 [0.1.26 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.26)。
 
 默认打开方式：进入 **更多操作（…）→ 设置 → 设置默认打开方式**，为当前程序注册本机入口并打开 Windows 设置，再为 `.md` 和 `.markdown` 选择 MD。若注册失败，仍可点击“打开系统设置”手动选择；“复制程序路径”可用于系统文件选择框，“查看错误详情”会显示原因和错误代码。最终默认应用由 Windows 界面确认。升级或移动程序后，请从新位置重新设置。
+
+0.1.26 单文件版注册的是你保存的外层 EXE；“复制程序路径”也复制这个文件的位置。
 
 检查更新：打开 **更多操作（…）→ 检查更新**，或 **设置 → 检查更新**，在弹窗中点击检查。应用仅在你手动检查时读取本仓库的公开 GitHub 发布信息（包括公开预览版），显示当前版本、最新兼容 Windows x64 版本及纯文本更新说明。点击发布页按钮会在外部浏览器打开已核对的官方发布页；下载后按上面的步骤升级。应用不会在后台自动检查，也不会自动下载、安装或重启。关闭弹窗后可继续编辑和保存文档。
 
@@ -73,9 +87,10 @@ npm start
 ```powershell
 node --test --test-concurrency=1 tests/*.test.mjs
 npm run package
+npm run package:portable
 ```
 
-打包目录为 `.packaged/MD-win32-x64`。首次安装依赖或打包可能下载 Electron 运行时。运行测试和原生桌面检查的方法见 [贡献指南](CONTRIBUTING.md)；当前版本实际执行的范围见 [验证记录](docs/VALIDATION-0.1.25.md)。
+`npm run package` 生成 `.packaged/MD-win32-x64` 文件夹版；`npm run package:portable` 先构建文件夹版，再生成 `.packaged/portable/MD-Windows-x64-版本号.exe`。首次安装依赖或构建可能下载运行时及打包工具，已生成的单文件程序启动时不需要联网下载组件。运行测试和原生桌面检查的方法见 [贡献指南](CONTRIBUTING.md)；本版本的实际检查见 [验证记录](docs/VALIDATION-0.1.26.md)。
 
 ## 维护与反馈
 

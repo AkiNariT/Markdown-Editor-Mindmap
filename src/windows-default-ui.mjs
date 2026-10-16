@@ -16,20 +16,20 @@ export function createWindowsDefaultUI({ api, t, document, canAct = () => true }
 
   function registrationCause(code) {
     switch (code) {
-      case 'HELPER_MISSING': return t('缺少设置组件。请完整解压下载包后重试，也可手动选择 MD.exe。');
-      case 'POWERSHELL_MISSING': return t('未找到系统 PowerShell。请在 Windows 设置中手动选择 MD.exe。');
-      case 'TIMEOUT': return t('自动注册超时。可重试，或在 Windows 设置中手动选择 MD.exe。');
-      case 'ACCESS_DENIED': return t('系统拒绝了注册操作。请在 Windows 设置中手动选择 MD.exe。');
-      case 'CONFLICT': return t('检测到现有的应用记录，未自动覆盖。请在 Windows 设置中手动选择 MD.exe。');
-      default: return t('自动注册未完成。请在 Windows 设置中手动选择 MD.exe，或展开详情查看原因。');
+      case 'HELPER_MISSING': return t('缺少设置组件。请重新下载完整程序后重试，也可在 Windows 设置中手动选择当前 MD 程序。');
+      case 'POWERSHELL_MISSING': return t('未找到系统 PowerShell。请在 Windows 设置中手动选择当前 MD 程序。');
+      case 'TIMEOUT': return t('自动注册超时。可重试，或在 Windows 设置中手动选择当前 MD 程序。');
+      case 'ACCESS_DENIED': return t('系统拒绝了注册操作。请在 Windows 设置中手动选择当前 MD 程序。');
+      case 'CONFLICT': return t('检测到现有的应用记录，未自动覆盖。请在 Windows 设置中手动选择当前 MD 程序。');
+      default: return t('自动注册未完成。请在 Windows 设置中手动选择当前 MD 程序，或展开详情查看原因。');
     }
   }
 
   function failureMessage(code) {
     switch (code) {
       case 'WINDOWS_DEFAULT_UNSUPPORTED': return t('默认打开方式设置目前仅支持 Windows。');
-      case 'WINDOWS_DEFAULT_DEVELOPMENT': return t('请在打包后的 MD.exe 中设置默认打开方式。');
-      case 'WINDOWS_DEFAULT_REGISTRATION': return t('无法识别当前程序位置。请完整解压下载包并运行 MD.exe。');
+      case 'WINDOWS_DEFAULT_DEVELOPMENT': return t('请在打包后的 MD 程序中设置默认打开方式。');
+      case 'WINDOWS_DEFAULT_REGISTRATION': return t('无法识别当前程序位置。请从保存的 MD 程序重新启动后重试。');
       default: return t('操作未完成。请重试，或手动打开 Windows 设置 → 应用 → 默认应用。');
     }
   }
