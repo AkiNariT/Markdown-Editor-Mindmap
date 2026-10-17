@@ -38,12 +38,16 @@ Remove-Item Env:MOYE_EXE
 
 ```powershell
 npm run package:portable
-$env:MOYE_PORTABLE_EXE = (Resolve-Path '.packaged/portable/MD-Windows-x64-0.1.26.exe').Path
+$env:MOYE_PORTABLE_EXE = (Resolve-Path '.packaged/portable/MD-Windows-x64-0.1.28.exe').Path
 npm run test:portable
 Remove-Item Env:MOYE_PORTABLE_EXE
 ```
 
-将文件名版本替换为当前 `package.json` 版本。`package:portable` 先构建完整文件夹，再包装单文件 EXE；`test:portable` 使用隔离测试资料。验证独立复制与改名后的 EXE、外部文件打开、恢复及退出清理；默认应用注册必须指向外层 EXE，不能保存临时运行路径。单文件启动无需联网下载组件，构建机器首次准备打包工具则可能需要联网。
+将文件名版本替换为当前 `package.json` 版本。`package:portable` 先构建完整文件夹，再包装单文件 EXE；`test:portable` 使用隔离测试资料与缓存。验证独立复制与改名后的 EXE、外部文件打开、会话恢复、退出后缓存保留、重复启动复用、缺失／截断缓存修复和并发首次准备。默认应用注册必须指向外层 EXE，不能保存运行缓存路径。单文件启动无需联网下载组件，构建机器首次准备打包工具则可能需要联网。
+
+运行缓存默认位于 `%LOCALAPPDATA%\MD\Runtime`，测试可用 `MD_PORTABLE_CACHE_HOME` 指定隔离的绝对路径。已发布的缓存副本不能原地覆盖或随退出删除，修复应生成新副本，避免影响仍在运行的实例。准备新副本时校验每个文件的 SHA-256，复用时检查完成标记和文件大小；后者不等于每次重验全部内容。性能检查使用 `npm run test:performance`，分别记录空缓存首次准备与完整缓存启动，不能以日常启动成绩宣称首次启动目标达成。
+
+导图交互修改应运行 `npm run test:mindmap-alignment`、`npm run test:mindmap-interaction` 及相关功能检查，覆盖拖动参考线、Alt 暂停吸附、Ctrl／Shift 多选、父子同选移动、缩放后的吸附距离、撤销重做、连线避让及保存重开。后台编辑器视图释放相关修改还需复验文档内容、撤销记录、阅读位置、源码／对照模式和草稿恢复。
 
 ## 需要保持的行为
 

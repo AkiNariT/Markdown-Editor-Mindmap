@@ -1,7 +1,9 @@
 import { t, onLocaleChange } from './i18n.mjs';
 import { validateMindmap, serializeMindmap } from './mindmap.mjs';
 import { applyNodeAppearance } from './mindmap-appearance.mjs';
-import { nodePalettes, createNodeArtwork, crystalBranch } from './mindmap-themes.mjs';
+import { nodePalettes, createNodeArtwork } from './mindmap-themes.mjs';
+import { createMindmapRouter } from './mindmap-routing.mjs';
+import { createMindmapSnapper } from './mindmap-snapping.mjs';
 
 const NODE_WIDTH = 216, NODE_HEIGHT = 96, COLUMN_GAP = 76, ROW_GAP = 24;
 const clone = value => ({ ...value,
@@ -13,12 +15,14 @@ const fileName = path => path?.split(/[\\/]/).at(-1) || '';
 
 export function createMindmapView(initialData, options = {}) {
   let data = validateMindmap(initialData), selected = data.root;
+  let selectedNodes = new Set([selected]);
   let editable = true, locked = false, destroyed = false, composing = false, textBefore = null;
   let zoom = 100, pendingLink = false, pendingCreate = false, deleteTarget = null, drag = null, initialized = false;
   let savedPosition = { left: 0, top: 0 }, positions = new Map(), dimensions = { width: 1, height: 1 };
   let pendingSessionPosition = false;
   let layoutPadding = { x: 400, y: 250 }, restoredLayoutPadding = false;
   let contextMenu = null, suppressClickUntil = 0, connectionSource = null, selectedConnection = null;
+  let menuCanvasPosition = null;
   let suppressOpenUntil = 0;
   const undoStack = [], redoStack = [], nodeElements = new Map();
   const host = document.createElement('section');
@@ -60,20 +64,22 @@ export function createMindmapView(initialData, options = {}) {
   const lines = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); lines.classList.add('mindmap-lines'); lines.setAttribute('aria-hidden', 'true');
   const nodesLayer = document.createElement('div'); nodesLayer.className = 'mindmap-nodes';
   const connectionLabels = document.createElement('div'); connectionLabels.className = 'mindmap-connection-labels';
-  world.append(lines, connectionLabels, nodesLayer); stage.append(world); canvas.append(stage);
+  const guides = document.createElementNS(lines.namespaceURI, 'svg'); guides.classList.add('mindmap-guides'); guides.setAttribute('aria-hidden', 'true');
+  world.append(lines, connectionLabels, nodesLayer, guides); stage.append(world); canvas.append(stage);
   const hint = document.createElement('div'); hint.className = 'mindmap-hint'; hint.textContent = t('拖动节点调整位置 · 拖动空白处平移 · 右键快捷操作');
   host.append(toolbar, editorRow, connectionRow, confirmation, canvas, hint);
 
   const node = id => data.nodes.find(item => item.id === id);
   const connection = id => data.connections?.find(item => item.id === id);
-  const snapshot = () => ({ data: clone(data), selected, selectedConnection });
+  const snapshot = () => ({ data: clone(data), selected, selectedNodes: [...selectedNodes], selectedConnection });
   const report = error => options.onError?.(error instanceof Error ? error.message : String(error));
   function push(stack, value) { stack.push(value); if (stack.length > 100) stack.shift(); }
   function changed() { options.onChange?.(); }
   function resetHint() {
-    hint.textContent = t(connectionSource ? '点击要连接的节点 · Esc 取消' : editable
-      ? '拖动节点调整位置 · 拖动空白处平移 · 右键快捷操作'
-      : '双击节点打开文件 · 拖动空白处平移 · 右键快捷操作');
+    hint.textContent = connectionSource ? t('点击要连接的节点 · Esc 取消') : editable
+      ? selectedNodes.size > 1 ? t('已选 {count} 个节点 · 拖动一起移动并对齐 · Alt 暂停吸附', { count: selectedNodes.size })
+        : t('Ctrl / Shift + 点击多选 · 拖动节点靠近时对齐 · Alt 暂停吸附 · 右键快捷操作')
+      : t('双击节点打开文件 · 拖动空白处平移 · 右键快捷操作');
   }
   function cancelConnection() { connectionSource = null; resetHint(); renderSelection(); }
   function finishText() {
@@ -94,6 +100,7 @@ export function createMindmapView(initialData, options = {}) {
     } catch (error) { report(error); return false; }
     push(undoStack, before); redoStack.length = 0;
     selected = node(nextSelection) ? nextSelection : data.root;
+    if (selected !== before.selected) selectedNodes = new Set([selected]);
     if (selected !== before.selected || !connection(selectedConnection)) selectedConnection = null;
     dismissDelete(); render(); changed(); return true;
   }
@@ -115,9 +122,17 @@ export function createMindmapView(initialData, options = {}) {
   const cancelButton = makeButton('取消删除', () => { dismissDelete(); canvas.focus({ preventScroll: true }); }, 'mindmap-confirm-button');
   confirmation.append(confirmationText, cancelButton, confirmButton);
 
-  function select(id, focusCanvas = true) {
+  function select(id, focusCanvas = true, { toggle = false, preserve = false } = {}) {
     if (!node(id) || composing || locked || destroyed) return;
-    finishText(); selected = id; selectedConnection = null; dismissDelete(); preserveCanvasOrigin(() => { renderSelection(); renderLines(); });
+    finishText();
+    if (toggle && editable) {
+      if (selectedNodes.has(id) && selectedNodes.size > 1) { selectedNodes.delete(id); selected = [...selectedNodes].at(-1); }
+      else { selectedNodes.add(id); selected = id; }
+    } else {
+      selected = id;
+      if (!preserve || !selectedNodes.has(id)) selectedNodes = new Set([id]);
+    }
+    selectedConnection = null; dismissDelete(); preserveCanvasOrigin(() => { renderSelection(); renderLines(); });
     if (focusCanvas) canvas.focus({ preventScroll: true });
   }
   function preserveCanvasOrigin(update) {
@@ -138,10 +153,11 @@ export function createMindmapView(initialData, options = {}) {
   }
   function editConnection() { selectConnection(selectedConnection, true); }
   function editSelected() {
-    if (!editable || locked || composing || destroyed) return;
+    if (!editable || locked || composing || destroyed || selectedNodes.size !== 1) return;
     input.focus({ preventScroll: true }); input.select();
   }
   function addNode(sibling) {
+    if (selectedNodes.size !== 1) return;
     const current = node(selected);
     if (!current || (sibling && current.parent === null)) return;
     const parent = sibling ? current.parent : current.id;
@@ -166,7 +182,7 @@ export function createMindmapView(initialData, options = {}) {
     visit(id); return ids;
   }
   function requestDelete() {
-    if (!editable || locked || composing || selected === data.root) return;
+    if (!editable || locked || composing || selectedNodes.size !== 1 || selected === data.root) return;
     finishText(); deleteTarget = selected;
     refreshDeleteMessage();
     confirmation.hidden = false; cancelButton.focus({ preventScroll: true });
@@ -193,7 +209,7 @@ export function createMindmapView(initialData, options = {}) {
     mutate(draft => { const item = draft.nodes.find(item => item.id === id); item.collapsed = !item.collapsed; return id; });
   }
   async function linkSelected() {
-    if (!editable || locked || composing || pendingLink || !options.onLink) return;
+    if (!editable || locked || composing || selectedNodes.size !== 1 || pendingLink || !options.onLink) return;
     finishText(); const id = selected; pendingLink = true; renderSelection();
     try {
       const path = await options.onLink(id);
@@ -218,7 +234,7 @@ export function createMindmapView(initialData, options = {}) {
     return mutate(draft => { draft.nodes.find(item => item.id === id).file = path; }, { allowLocked: true, allowBackground: true });
   }
   function beginConnection() {
-    if (!editable || locked || composing || destroyed) return;
+    if (!editable || locked || composing || destroyed || selectedNodes.size !== 1) return;
     cancelDrag(); closeMenu(); finishText(); connectionSource = selected; selectedConnection = null;
     resetHint(); renderSelection(); renderLines(); canvas.focus({ preventScroll: true });
   }
@@ -246,7 +262,7 @@ export function createMindmapView(initialData, options = {}) {
     }
   }
   function applyText() {
-    if (!editable || locked || destroyed || composing) return;
+    if (!editable || locked || destroyed || composing || selectedNodes.size !== 1) return;
     const current = node(selected), value = input.value;
     if (!current || value === current.text) return;
     if (value.length > 500) { report(t('节点文字最多支持 500 个字符。')); input.value = current.text; return; }
@@ -319,9 +335,13 @@ export function createMindmapView(initialData, options = {}) {
   });
 
   function renderSelection() {
+    selectedNodes = new Set([...selectedNodes].filter(id => positions.has(id)));
+    if (!positions.has(selected)) selected = selectedNodes.values().next().value || data.root;
+    selectedNodes.add(selected);
     const current = node(selected);
     if (!current) return;
-    editorRow.hidden = !editable || Boolean(connection(selectedConnection));
+    const multiple = selectedNodes.size > 1;
+    editorRow.hidden = !editable || multiple || Boolean(connection(selectedConnection));
     const currentConnection = connection(selectedConnection);
     connectionRow.hidden = !currentConnection;
     connectionInput.readOnly = !editable || locked;
@@ -344,12 +364,12 @@ export function createMindmapView(initialData, options = {}) {
     } else if (!legacyShapes) legacyOption?.remove();
     themeInput.disabled = !editable || locked || composing; themeInput.value = legacyShapes ? 'legacy' : data.theme || 'classic';
     detail.textContent = current.file ? fileName(current.file) : ''; detail.title = current.file || ''; detail.hidden = !current.file;
-    childButton.disabled = !editable || locked; siblingButton.disabled = !editable || locked || current.parent === null;
-    deleteButton.disabled = !editable || locked || current.id === data.root;
-    linkButton.disabled = !editable || locked || pendingLink || !options.onLink;
-    openButton.disabled = locked || !current.file || !options.onOpen;
-    unlinkButton.disabled = !editable || locked || !current.file;
-    collapseButton.disabled = !editable || locked || !data.nodes.some(item => item.parent === current.id);
+    childButton.disabled = !editable || locked || multiple; siblingButton.disabled = !editable || locked || multiple || current.parent === null;
+    deleteButton.disabled = !editable || locked || multiple || current.id === data.root;
+    linkButton.disabled = !editable || locked || multiple || pendingLink || !options.onLink;
+    openButton.disabled = locked || multiple || !current.file || !options.onOpen;
+    unlinkButton.disabled = !editable || locked || multiple || !current.file;
+    collapseButton.disabled = !editable || locked || multiple || !data.nodes.some(item => item.parent === current.id);
     centerButton.disabled = locked; confirmButton.disabled = !editable || locked;
     cancelButton.disabled = locked;
     collapseButton.textContent = t(current.collapsed ? '展开' : '折叠'); collapseButton.setAttribute('aria-label', collapseButton.textContent);
@@ -357,13 +377,14 @@ export function createMindmapView(initialData, options = {}) {
     host.classList.toggle('mindmap-locked', locked);
     host.classList.toggle('mindmap-connecting', Boolean(connectionSource));
     for (const [id, elements] of nodeElements) {
-      elements.card.classList.toggle('mindmap-selected', selected === id);
+      elements.card.classList.toggle('mindmap-selected', selectedNodes.has(id));
       elements.card.classList.toggle('mindmap-connection-source', connectionSource === id);
-      elements.button.setAttribute('aria-pressed', String(selected === id));
+      elements.button.setAttribute('aria-pressed', String(selectedNodes.has(id)));
       elements.button.disabled = locked;
       if (elements.attachment) elements.attachment.disabled = locked || !options.onOpen;
       if (elements.fold) elements.fold.disabled = !editable || locked;
     }
+    resetHint();
   }
   function measureTree() {
     const children = new Map(data.nodes.map(item => [item.id, []]));
@@ -383,7 +404,7 @@ export function createMindmapView(initialData, options = {}) {
     let maxX = 0, maxY = 0, minX = Infinity, minY = Infinity;
     const place = (item, depth, top, ancestorOffset = { x: 0, y: 0 }) => {
       const offset = { x: ancestorOffset.x + (item.offset?.x || 0), y: ancestorOffset.y + (item.offset?.y || 0) };
-      if (drag?.kind === 'node' && drag.nodeId === item.id) { offset.x += drag.dx; offset.y += drag.dy; }
+      if (drag?.kind === 'node' && drag.nodeIds.has(item.id)) { offset.x += drag.dx; offset.y += drag.dy; }
       const x = paddingX + depth * (NODE_WIDTH + COLUMN_GAP) + offset.x;
       const y = top + (heights.get(item.id) - NODE_HEIGHT) / 2 + offset.y;
       positions.set(item.id, { x, y });
@@ -393,10 +414,12 @@ export function createMindmapView(initialData, options = {}) {
     };
     place(node(data.root), 0, paddingY);
     // A loaded map or a changed tree can bring an offset past the origin.
-    // Keep the entire layout reachable without rewriting its stored offsets.
+    // Retain the added canvas padding so later drags do not move stationary
+    // cards or invalidate the alignment coordinates captured at pointerdown.
     const shift = { x: Math.max(0, 24 - minX), y: Math.max(0, 24 - minY) };
+    layoutPadding = { x: paddingX + shift.x, y: paddingY + shift.y };
     for (const position of positions.values()) { position.x += shift.x; position.y += shift.y; }
-    dimensions = { width: maxX + shift.x + paddingX, height: maxY + shift.y + paddingY };
+    dimensions = { width: maxX + shift.x + layoutPadding.x, height: maxY + shift.y + layoutPadding.y };
     return children;
   }
   function sizeStage() {
@@ -404,47 +427,39 @@ export function createMindmapView(initialData, options = {}) {
     world.style.width = `${dimensions.width}px`; world.style.height = `${dimensions.height}px`;
     world.style.transform = `scale(${scale})`;
     stage.style.width = `${dimensions.width * scale}px`; stage.style.height = `${dimensions.height * scale}px`;
-    lines.setAttribute('width', dimensions.width); lines.setAttribute('height', dimensions.height);
-    lines.setAttribute('viewBox', `0 0 ${dimensions.width} ${dimensions.height}`);
-  }
-  function curveBetween(from, to, bow = 0) {
-    const dx = to.x - from.x, dy = to.y - from.y;
-    let startX, startY, endX, endY, controlA, controlB;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      const direction = dx >= 0 ? 1 : -1;
-      startX = from.x + (direction > 0 ? NODE_WIDTH : 0); startY = from.y + NODE_HEIGHT / 2;
-      endX = to.x + (direction > 0 ? 0 : NODE_WIDTH); endY = to.y + NODE_HEIGHT / 2;
-      const gap = (endX - startX) * direction;
-      const bend = gap >= 0 ? gap / 2 : Math.max(COLUMN_GAP / 2, Math.abs(gap) / 2);
-      controlA = `${startX + direction * bend} ${startY - bow}`; controlB = `${endX - direction * bend} ${endY - bow}`;
-    } else {
-      const direction = dy >= 0 ? 1 : -1;
-      startX = from.x + NODE_WIDTH / 2; startY = from.y + (direction > 0 ? NODE_HEIGHT : 0);
-      endX = to.x + NODE_WIDTH / 2; endY = to.y + (direction > 0 ? 0 : NODE_HEIGHT);
-      const gap = (endY - startY) * direction;
-      const bend = gap >= 0 ? gap / 2 : Math.max(COLUMN_GAP / 2, Math.abs(gap) / 2);
-      controlA = `${startX + bow} ${startY + direction * bend}`; controlB = `${endX + bow} ${endY - direction * bend}`;
+    for (const layer of [lines, guides]) {
+      layer.setAttribute('width', dimensions.width); layer.setAttribute('height', dimensions.height);
+      layer.setAttribute('viewBox', `0 0 ${dimensions.width} ${dimensions.height}`);
     }
-    return `M ${startX} ${startY} C ${controlA}, ${controlB}, ${endX} ${endY}`;
   }
   function renderLines() {
     lines.replaceChildren(); connectionLabels.replaceChildren();
     const labels = [];
     const byId = new Map(data.nodes.map(item => [item.id, item]));
+    const router = createMindmapRouter(positions, { width: NODE_WIDTH, height: NODE_HEIGHT, columnGap: COLUMN_GAP });
+    const routeBetween = (from, to, options) => {
+      const route = router.route(from, to, options);
+      if (route) {
+        dimensions.width = Math.max(dimensions.width, route.bounds.right + 24);
+        dimensions.height = Math.max(dimensions.height, route.bounds.bottom + 24);
+      }
+      return route;
+    };
     for (const item of data.nodes) {
       const position = positions.get(item.id); if (!position) continue;
       if (item.parent !== null) {
         const parent = positions.get(item.parent);
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.classList.add('mindmap-branch');
-        path.setAttribute('d', data.theme === 'crystal' ? crystalBranch(parent, position) : curveBetween(parent, position));
+        const route = routeBetween(item.parent, item.id, { crystal: data.theme === 'crystal' });
+        path.setAttribute('d', route.d);
         if (data.theme === 'tree') {
           let depth = 0, ancestor = item;
           while (ancestor.parent !== null) { depth++; ancestor = byId.get(ancestor.parent); }
           path.style.strokeWidth = String(Math.max(1.6, 5 - depth * .65));
         }
         lines.append(path);
-        if (data.theme === 'vine' && position.x - parent.x > NODE_WIDTH + 38) {
+        if (data.theme === 'vine' && !route.rerouted && !route.blocked && position.x - parent.x > NODE_WIDTH + 38) {
           const leaf = document.createElementNS(lines.namespaceURI, 'path'); leaf.classList.add('mindmap-vine-leaf');
           const x = position.x - 21, y = position.y + NODE_HEIGHT / 2;
           leaf.setAttribute('d', `M ${x} ${y} Q ${x - 15} ${y - 3} ${x - 10} ${y - 16} Q ${x + 3} ${y - 13} ${x} ${y} Z`); lines.append(leaf);
@@ -454,7 +469,8 @@ export function createMindmapView(initialData, options = {}) {
     for (const connection of data.connections || []) {
       const from = positions.get(connection.from), to = positions.get(connection.to);
       if (!from || !to) continue;
-      const curve = curveBetween(from, to, 32);
+      const route = routeBetween(connection.from, connection.to, { bow: 32 });
+      const curve = route.d;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.classList.add('mindmap-connection'); path.classList.toggle('mindmap-connection-selected', connection.id === selectedConnection);
       path.dataset.connectionLine = connection.id; path.setAttribute('d', curve); lines.append(path);
@@ -471,9 +487,7 @@ export function createMindmapView(initialData, options = {}) {
         label.dataset.connectionId = connection.id; label.dataset.connectionLabel = connection.id;
         label.textContent = connection.label; label.title = connection.label; label.setAttribute('aria-label', t('连接说明：{text}', { text: connection.label }));
         label.classList.toggle('mindmap-connection-label-selected', connection.id === selectedConnection); label.setAttribute('aria-pressed', String(connection.id === selectedConnection));
-        const vertical = Math.abs(to.y - from.y) >= Math.abs(to.x - from.x);
-        // Midpoint of the same cubic with a 32px bow (the controls contribute 3/4).
-        const anchor = { x: (from.x + to.x + NODE_WIDTH) / 2 + (vertical ? 24 : 0), y: (from.y + to.y + NODE_HEIGHT) / 2 - (vertical ? 0 : 24) };
+        const anchor = route.midpoint;
         label.addEventListener('click', event => { event.stopPropagation(); selectConnection(connection.id); });
         label.addEventListener('dblclick', event => { event.stopPropagation(); selectConnection(connection.id, true); });
         connectionLabels.append(label);
@@ -481,6 +495,7 @@ export function createMindmapView(initialData, options = {}) {
       }
     }
     placeConnectionLabels(labels);
+    sizeStage();
   }
   function clearLabelDistance(anchor, direction, width, height, obstacles) {
     const x = anchor.x, y = anchor.y, dx = direction.x, dy = direction.y;
@@ -574,9 +589,9 @@ export function createMindmapView(initialData, options = {}) {
       button.title = item.text; button.setAttribute('aria-label', item.text || t('未命名主题'));
       const title = document.createElement('span'); title.className = 'mindmap-node-title'; title.textContent = item.text || t('未命名主题');
       button.append(title);
-      button.addEventListener('click', () => { if (connectionSource) connectTo(item.id); else select(item.id); });
+      button.addEventListener('click', event => { if (connectionSource) connectTo(item.id); else select(item.id, true, { toggle: event.ctrlKey || event.metaKey || event.shiftKey }); });
       card.addEventListener('dblclick', event => {
-        if (locked || composing || destroyed || drag || connectionSource || Date.now() < suppressOpenUntil || event.target.closest('.mindmap-file, .mindmap-fold')) return;
+        if (locked || composing || destroyed || drag || connectionSource || event.ctrlKey || event.metaKey || event.shiftKey || Date.now() < suppressOpenUntil || event.target.closest('.mindmap-file, .mindmap-fold')) return;
         select(item.id, false);
         if (node(item.id)?.file) openNode(item.id);
         else createNodeFile(item.id);
@@ -629,7 +644,7 @@ export function createMindmapView(initialData, options = {}) {
       layoutPadding = { x: value.layoutPadding.x, y: value.layoutPadding.y };
       restoredLayoutPadding = true;
     }
-    if (typeof value.selected === 'string' && node(value.selected)) { selected = value.selected; selectedConnection = null; }
+    if (typeof value.selected === 'string' && node(value.selected)) { selected = value.selected; selectedNodes = new Set([selected]); selectedConnection = null; }
     if (value.position && [value.position.left, value.position.top].every(coordinate => Number.isFinite(coordinate) && coordinate >= 0)) {
       savedPosition = { left: value.position.left, top: value.position.top };
       pendingSessionPosition = true;
@@ -658,9 +673,9 @@ export function createMindmapView(initialData, options = {}) {
     else if (top + NODE_HEIGHT * scale > canvas.scrollTop + canvas.clientHeight - margin) canvas.scrollTop = top + NODE_HEIGHT * scale - canvas.clientHeight + margin;
     capturePosition();
   }
-  function closeMenu() { contextMenu?.remove(); contextMenu = null; }
+  function closeMenu() { contextMenu?.remove(); contextMenu = null; menuCanvasPosition = null; }
   function menuHeading(connectionId) {
-    return connectionId ? t('节点连接') : t('当前节点：{name}', { name: node(selected).text || t('未命名主题') });
+    return connectionId ? t('节点连接') : selectedNodes.size > 1 ? t('已选 {count} 个节点', { count: selectedNodes.size }) : t('当前节点：{name}', { name: node(selected).text || t('未命名主题') });
   }
   function showMenu(event, connectionId = null) {
     closeMenu(); cancelDrag(); suppressClickUntil = 0;
@@ -684,20 +699,21 @@ export function createMindmapView(initialData, options = {}) {
       add('delete-connection', '删除连接', deleteConnection, !editable);
     } else {
       const current = node(selected);
-      add('edit', '编辑文字', editSelected, !editable);
+      add('edit', '编辑文字', editSelected, !editable || selectedNodes.size > 1);
       add('add-child', '新增子主题', () => addNode(false), childButton.disabled);
       add('add-sibling', '新增同级主题', () => addNode(true), siblingButton.disabled);
-      add('connect', '建立连接', beginConnection, !editable);
-      add('create-markdown', '新建 Markdown', () => createNodeFile(selected), Boolean(current.file) || pendingCreate || pendingLink || !options.onCreate);
+      add('connect', '建立连接', beginConnection, !editable || selectedNodes.size > 1);
+      add('create-markdown', '新建 Markdown', () => createNodeFile(selected), selectedNodes.size > 1 || Boolean(current.file) || pendingCreate || pendingLink || !options.onCreate);
       add('link-markdown', '关联 Markdown 文件', linkSelected, linkButton.disabled);
       add('open', '打开文件', () => openNode(selected), openButton.disabled);
       add('unlink', '取消关联', () => unlinkButton.click(), unlinkButton.disabled);
       add('toggle', current.collapsed ? '展开子主题' : '折叠子主题', () => toggleCollapsed(selected), collapseButton.disabled);
       add('delete', '删除', requestDelete, deleteButton.disabled);
-      add('reset-layout', '恢复自动布局', () => mutate(draft => { delete draft.nodes.find(item => item.id === selected).offset; }), !editable || !current.offset);
+      add('reset-layout', '恢复自动布局', () => mutate(draft => { for (const item of draft.nodes) if (selectedNodes.has(item.id)) delete item.offset; }), !editable || !data.nodes.some(item => selectedNodes.has(item.id) && item.offset));
       add('center', '居中', centerRoot);
     }
     contextMenu = menu; host.append(menu);
+    menuCanvasPosition = { left: canvas.scrollLeft, top: canvas.scrollTop };
     const rect = menu.getBoundingClientRect(), win = document.defaultView, inset = 8;
     menu.style.left = `${Math.max(inset, Math.min(event.clientX, win.innerWidth - rect.width - inset))}px`;
     menu.style.top = `${Math.max(inset, Math.min(event.clientY, win.innerHeight - rect.height - inset))}px`;
@@ -709,7 +725,7 @@ export function createMindmapView(initialData, options = {}) {
     if (locked || composing) return;
     const connection = event.target.closest('[data-connection-id]');
     const card = event.target.closest('[data-node-card]');
-    if (card) select(card.dataset.nodeCard);
+    if (card) select(card.dataset.nodeCard, true, { preserve: true });
     showMenu(event, connection?.dataset.connectionId);
   });
   function outsidePointer(event) {
@@ -718,6 +734,7 @@ export function createMindmapView(initialData, options = {}) {
   }
   function globalKey(event) {
     if (event.isComposing || composing) return;
+    if (event.key === 'Alt' && drag?.kind === 'node' && drag.moved) { previewNodeDrag(true); event.preventDefault(); }
     if (event.key === 'Escape' && (drag || contextMenu || connectionSource)) {
       cancelDrag(); closeMenu(); cancelConnection(); event.preventDefault();
       if (host.isConnected) canvas.focus({ preventScroll: true });
@@ -732,26 +749,50 @@ export function createMindmapView(initialData, options = {}) {
       items[next].focus({ preventScroll: true }); event.preventDefault();
     }
   }
+  function globalKeyUp(event) {
+    if (event.key === 'Alt' && drag?.kind === 'node' && drag.moved) { previewNodeDrag(false); event.preventDefault(); }
+  }
   function dismissTransient() { cancelDrag(); closeMenu(); cancelConnection(); }
-  function outsideScroll(event) { if (!contextMenu?.contains(event.target)) closeMenu(); }
+  function outsideScroll(event) {
+    if (!contextMenu || contextMenu.contains(event.target)) return;
+    // Restoring the viewport can queue a scroll event delivered after the menu
+    // opens. Only dismiss for an actual change from its opening position.
+    if (event.target === canvas && menuCanvasPosition && Math.abs(canvas.scrollLeft - menuCanvasPosition.left) < .5 && Math.abs(canvas.scrollTop - menuCanvasPosition.top) < .5) return;
+    closeMenu();
+  }
   document.addEventListener('pointerdown', outsidePointer, true);
   document.addEventListener('keydown', globalKey, true);
+  document.addEventListener('keyup', globalKeyUp, true);
   document.addEventListener('scroll', outsideScroll, true);
   document.defaultView.addEventListener('resize', dismissTransient);
   document.defaultView.addEventListener('blur', dismissTransient);
-  canvas.addEventListener('scroll', () => { closeMenu(); if (host.isConnected && canvas.clientWidth && canvas.clientHeight) capturePosition(); }, { passive: true });
+  canvas.addEventListener('scroll', event => { outsideScroll(event); if (host.isConnected && canvas.clientWidth && canvas.clientHeight) capturePosition(); }, { passive: true });
   canvas.addEventListener('pointerdown', event => {
     if (event.button !== 0 || locked || composing || destroyed || event.target.closest('.mindmap-file, .mindmap-fold, input, [data-connection-id]')) return;
     cancelDrag(); closeMenu(); suppressClickUntil = 0;
     const card = event.target.closest('[data-node-card]');
     if (connectionSource || (card && !editable)) return;
+    if (card && (event.ctrlKey || event.metaKey || event.shiftKey)) return;
     finishText(); canvas.focus({ preventScroll: true });
     if (card) {
-      const nodeId = card.dataset.nodeCard; select(nodeId);
-      const branchIds = descendants(nodeId), visible = [...positions].filter(([id]) => branchIds.has(id)).map(([, point]) => point);
-      drag = { kind: 'node', id: event.pointerId, nodeId, x: event.clientX, y: event.clientY, dx: 0, dy: 0, moved: false,
-        minX: Math.min(...visible.map(point => point.x)), minY: Math.min(...visible.map(point => point.y)),
-        offset: { x: node(nodeId).offset?.x || 0, y: node(nodeId).offset?.y || 0 } };
+      const nodeId = card.dataset.nodeCard; select(nodeId, true, { preserve: true });
+      const nodeIds = new Set([...selectedNodes].filter(id => {
+        let parent = node(node(id).parent);
+        while (parent) { if (selectedNodes.has(parent.id)) return false; parent = node(parent.parent); }
+        return true;
+      }));
+      const branchIds = new Set([...nodeIds].flatMap(id => [...descendants(id)]));
+      const visible = [...positions].filter(([id]) => branchIds.has(id)).map(([, point]) => point);
+      const offsets = new Map([...nodeIds].map(id => [id, { x: node(id).offset?.x || 0, y: node(id).offset?.y || 0 }]));
+      const stored = [...offsets.values()];
+      drag = { kind: 'node', id: event.pointerId, nodeIds, offsets, x: event.clientX, y: event.clientY, dx: 0, dy: 0, rawDx: 0, rawDy: 0, moved: false,
+        snapper: createMindmapSnapper(positions, { anchorId: nodeId, movingIds: branchIds, width: NODE_WIDTH, height: NODE_HEIGHT }),
+        bounds: {
+          minDx: Math.max(24 - Math.min(...visible.map(point => point.x)), ...stored.map(point => -100000 - point.x)),
+          minDy: Math.max(24 - Math.min(...visible.map(point => point.y)), ...stored.map(point => -100000 - point.y)),
+          maxDx: Math.min(...stored.map(point => 100000 - point.x)), maxDy: Math.min(...stored.map(point => 100000 - point.y)),
+        },
+      };
     } else {
       if (event.target.closest('button')) return;
       finishText(); selectedConnection = null; preserveCanvasOrigin(() => { renderSelection(); renderLines(); });
@@ -769,12 +810,28 @@ export function createMindmapView(initialData, options = {}) {
     if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 5) return;
     if (!drag.moved) try { canvas.setPointerCapture?.(event.pointerId); } catch { /* Pointer already released. */ }
     drag.moved = true;
-    drag.dx = Math.max(24 - drag.minX, -100000 - drag.offset.x, Math.min(100000 - drag.offset.x, (event.clientX - drag.x) / (zoom / 100)));
-    drag.dy = Math.max(24 - drag.minY, -100000 - drag.offset.y, Math.min(100000 - drag.offset.y, (event.clientY - drag.y) / (zoom / 100)));
-    host.classList.add('mindmap-dragging'); previewLayout(); event.preventDefault();
+    drag.rawDx = (event.clientX - drag.x) / (zoom / 100); drag.rawDy = (event.clientY - drag.y) / (zoom / 100);
+    previewNodeDrag(event.altKey); event.preventDefault();
   });
+  function previewNodeDrag(disabled) {
+    const { minDx, maxDx, minDy, maxDy } = drag.bounds;
+    const dx = Math.max(minDx, Math.min(maxDx, drag.rawDx)), dy = Math.max(minDy, Math.min(maxDy, drag.rawDy));
+    const snapped = drag.snapper.snap(dx, dy, { zoom, disabled, bounds: drag.bounds });
+    drag.dx = snapped.dx; drag.dy = snapped.dy;
+    host.classList.add('mindmap-dragging'); previewLayout();
+    guides.replaceChildren();
+    for (const guide of snapped.guides) {
+      const line = document.createElementNS(guides.namespaceURI, 'line');
+      line.dataset.guideAxis = guide.axis;
+      const vertical = guide.axis === 'x';
+      line.setAttribute('x1', vertical ? guide.value : guide.start); line.setAttribute('y1', vertical ? guide.start : guide.value);
+      line.setAttribute('x2', vertical ? guide.value : guide.end); line.setAttribute('y2', vertical ? guide.end : guide.value);
+      guides.append(line);
+    }
+  }
   function releaseDrag() {
     const previous = drag; drag = null;
+    guides.replaceChildren();
     canvas.classList.remove('mindmap-panning'); host.classList.remove('mindmap-dragging');
     if (previous) try { if (canvas.hasPointerCapture?.(previous.id)) canvas.releasePointerCapture(previous.id); } catch { /* Capture can be lost outside the window. */ }
     return previous;
@@ -790,7 +847,7 @@ export function createMindmapView(initialData, options = {}) {
     suppressClickUntil = Date.now() + 400; previewLayout();
     if (previous.dx || previous.dy) mutate(draft => {
       draft.version = Math.max(draft.version, 2); draft.connections ||= [];
-      draft.nodes.find(item => item.id === previous.nodeId).offset = { x: previous.offset.x + previous.dx, y: previous.offset.y + previous.dy };
+      for (const [id, offset] of previous.offsets) draft.nodes.find(item => item.id === id).offset = { x: offset.x + previous.dx, y: offset.y + previous.dy };
     });
   });
   const cancelPointer = event => { if (drag?.id === event.pointerId) cancelDrag(); };
@@ -814,6 +871,7 @@ export function createMindmapView(initialData, options = {}) {
     dismissTransient();
     finishText(); const previous = from.pop(); if (!previous) return false;
     push(to, snapshot()); data = clone(previous.data); selected = previous.selected;
+    selectedNodes = new Set(previous.selectedNodes || [selected]);
     selectedConnection = connection(previous.selectedConnection) ? previous.selectedConnection : null;
     dismissDelete(); render(); changed(); return true;
   }
@@ -929,6 +987,7 @@ export function createMindmapView(initialData, options = {}) {
       destroyed = true; unsubscribeLocale(); observer?.disconnect(); releaseDrag(); closeMenu();
       document.removeEventListener('pointerdown', outsidePointer, true);
       document.removeEventListener('keydown', globalKey, true);
+      document.removeEventListener('keyup', globalKeyUp, true);
       document.removeEventListener('scroll', outsideScroll, true);
       document.defaultView.removeEventListener('resize', dismissTransient);
       document.defaultView.removeEventListener('blur', dismissTransient);

@@ -100,3 +100,27 @@ test('Tab and Shift-Tab on a selection spanning code and prose do not remove doc
     }
   } finally { editor.destroy(); }
 });
+
+test('background editor state can recover and serialize before mounting, then release its view without losing selection or undo', () => {
+  const host = document.createElement('div'); document.body.append(host);
+  const editor = createEditor(null, '# Original\n\nBefore recovery');
+  try {
+    assert.equal(host.childElementCount, 0);
+    editor.commands.setContent('# Recovered\n\nSaved draft\n\n```js\nconst answer = 42;\n```', { contentType: 'markdown', emitUpdate: false });
+    assert.match(editor.getMarkdown(), /# Recovered\n\nSaved draft/);
+    editor.mount(host);
+    assert.equal(host.querySelector('h1').textContent, 'Recovered');
+    assert.equal(host.querySelector('.hljs-keyword').textContent, 'const');
+    editor.commands.setTextSelection(15); editor.commands.insertContent('UNSAVED');
+    const modified = editor.getMarkdown(), selection = editor.state.selection.from;
+    editor.unmount();
+    assert.equal(host.childElementCount, 0);
+    assert.equal(editor.getMarkdown(), modified);
+    editor.mount(host);
+    assert.equal(editor.state.selection.from, selection);
+    assert.equal(editor.commands.undo(), true);
+    assert.doesNotMatch(editor.getMarkdown(), /UNSAVED/);
+    assert.equal(editor.commands.redo(), true);
+    assert.equal(editor.getMarkdown(), modified);
+  } finally { editor.destroy(); host.remove(); }
+});

@@ -1,34 +1,231 @@
-; Standalone launcher, built through electron-builder's custom NSIS script API.
-; Runtime files live only in this invocation's private NSIS plugin directory.
-; Documents and settings are managed by MD, never inside the extraction dir.
+; Standalone launcher with immutable, per-user runtime caches. Documents and
+; settings are managed by MD and never stored in these runtime directories.
 !include "common.nsh"
-!include "extractAppPackage.nsh"
+!include "${PROJECT_DIR}\.packaged\portable\runtime-files.nsh"
+!include "${PROJECT_DIR}\scripts\portable-hash.nsh"
 
-CRCCheck on
+; Warm launches must not scan the entire embedded Chromium payload. Native raw
+; extraction also avoids writing an intermediate ZIP and inflating it on first use.
+CRCCheck off
 WindowIcon Off
 AutoCloseWindow True
 RequestExecutionLevel user
 Icon "${MUI_ICON}"
 
+Var CacheHome
+Var CacheBuild
+Var CacheGeneration
+Var CacheLock
+Var CacheWait
+Var CacheValid
+Var CacheStage
+Var CacheDestination
+Var BannerVisible
+Var CheckHandle
+Var CheckSize
+Var FailureText
+
+!macro MDCheckRuntimeFile RELATIVE EXPECTED
+  ClearErrors
+  FileOpen $CheckHandle "$INSTDIR\${RELATIVE}" r
+  IfErrors runtime_invalid
+  FileSeek $CheckHandle 0 END $CheckSize
+  IfErrors 0 +3
+    FileClose $CheckHandle
+    Goto runtime_invalid
+  FileClose $CheckHandle
+  StrCmp $CheckSize "${EXPECTED}" 0 runtime_invalid
+!macroend
+
+!macro MDCheckRuntimeHash RELATIVE SIZE EXPECTED
+  StrCpy $CngPath "$INSTDIR\${RELATIVE}"
+  StrCpy $CngExpectedSize "${SIZE}"
+  Call CngHashFile
+  StrCmp $CngError "" 0 runtime_hash_invalid
+  StrCmp $CngResult "${EXPECTED}" 0 runtime_hash_invalid
+!macroend
+
+Function ShowPreparation
+  StrCmp $BannerVisible 1 done
+  Banner::show /NOUNLOAD /set 1030 "正在打开 MD…$\r$\nOpening MD…" "MD"
+  StrCpy $BannerVisible 1
+done:
+FunctionEnd
+
+Function HidePreparation
+  StrCmp $BannerVisible 1 0 done
+  Banner::destroy
+  StrCpy $BannerVisible 0
+done:
+FunctionEnd
+
+Function ReleaseCacheLock
+  StrCmp $CacheLock -1 done
+  System::Call 'kernel32::CloseHandle(p $CacheLock) i.r0'
+  StrCpy $CacheLock -1
+done:
+FunctionEnd
+
+; Embedded sizes check completeness without reading hundreds of MB each time.
+; This detects missing or truncated files, not same-size content tampering.
+Function ValidateRuntimeFiles
+  StrCpy $CacheValid 0
+  !insertmacro MDCheckAllRuntimeFiles
+  StrCpy $CacheValid 1
+runtime_invalid:
+FunctionEnd
+
+Function ValidateRuntime
+  StrCpy $CacheValid 0
+  IfFileExists "$INSTDIR\.invalid" done
+  ClearErrors
+  FileOpen $CheckHandle "$INSTDIR\.complete" r
+  IfErrors done
+  FileRead $CheckHandle $R1
+  FileClose $CheckHandle
+  StrCmp $R1 "sha256:${APP_64_HASH}" 0 done
+  Call ValidateRuntimeFiles
+done:
+FunctionEnd
+
+Function VerifyRuntimeHashes
+  StrCpy $CacheValid 0
+  Call CngInit
+  StrCmp $CngError "" 0 runtime_hash_invalid
+  !insertmacro MDHashAllRuntimeFiles
+  StrCpy $CacheValid 1
+runtime_hash_invalid:
+  Call CngFree
+FunctionEnd
+
+Function InvalidateRuntime
+  ; Keep all runtime files in place for any still-running process. The next
+  ; launch skips this generation and prepares a fresh, verified copy.
+  ClearErrors
+  FileOpen $CheckHandle "$INSTDIR\.invalid" w
+  IfErrors done
+  FileWrite $CheckHandle "Runtime launch failed."
+  FileClose $CheckHandle
+done:
+FunctionEnd
+
 Function .onInit
   SetSilent silent
+  StrCpy $CacheLock -1
+  StrCpy $CacheStage ""
+  StrCpy $BannerVisible 0
   !insertmacro check64BitAndSetRegView
-  ; Capture before SetOutPath changes the child's current working directory.
+  ; Capture before SetOutPath changes the child's working directory.
   System::Call 'kernel32::GetCurrentDirectory(i ${NSIS_MAX_STRLEN}, t .r1) i.r2'
   System::Call 'kernel32::SetEnvironmentVariable(t "MD_PORTABLE_CWD", t r1) i.r0'
-  Banner::show /NOUNLOAD /set 1030 "正在打开 MD…$\r$\nOpening MD…" "MD"
 FunctionEnd
 
 Section
-  InitPluginsDir
-  StrCpy $INSTDIR "$PLUGINSDIR\app"
-  SetOutPath $INSTDIR
-  !insertmacro extractEmbeddedAppPackage
-  IfFileExists "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0 unpack_failed
-  IfFileExists "$INSTDIR\icudtl.dat" 0 unpack_failed
-  IfFileExists "$INSTDIR\resources\app\electron\main.cjs" 0 unpack_failed
-  Banner::destroy
+  StrCpy $FailureText "无法准备 MD 运行文件，请检查可用空间及目录权限。$\nCould not prepare MD. Check free disk space and folder permissions."
+  ReadEnvStr $CacheHome MD_PORTABLE_CACHE_HOME
+  StrCmp $CacheHome "" 0 check_cache_home
+  StrCpy $CacheHome $LOCALAPPDATA
+check_cache_home:
+  ; An explicit cache override is useful for isolated profiles/tests, but must
+  ; never resolve relative to a document directory. Accept drive or UNC paths.
+  System::Call 'shlwapi::PathIsUNCW(w "$CacheHome") i.r0'
+  StrCmp $0 0 check_drive_path
+  StrCpy $R1 $CacheHome 4
+  StrCmp $R1 "\\?\" invalid_cache_home
+  StrCmp $R1 "\\.\" invalid_cache_home
+  System::Call 'shlwapi::PathIsUNCServerW(w "$CacheHome") i.r0'
+  StrCmp $0 0 normalize_cache_home invalid_cache_home
+check_drive_path:
+  System::Call 'shlwapi::PathGetDriveNumberW(w "$CacheHome") i.r0'
+  IntCmp $0 0 check_drive_separator invalid_cache_home check_drive_separator
+check_drive_separator:
+  StrCpy $R1 $CacheHome 1 2
+  StrCmp $R1 "\" normalize_cache_home
+  StrCmp $R1 "/" 0 invalid_cache_home
+normalize_cache_home:
+  ; Unlike NSIS GetFullPathName, the native API accepts a not-yet-created cache.
+  System::Call 'kernel32::GetFullPathNameW(w "$CacheHome", i ${NSIS_MAX_STRLEN}, w .r1, p 0) i.r0'
+  IntCmp $0 0 invalid_cache_home invalid_cache_home
+  IntCmp $0 ${NSIS_MAX_STRLEN} invalid_cache_home 0 invalid_cache_home
+  StrCpy $CacheHome $1
+  ; The archive hash is generated by electron-builder; copying or renaming the
+  ; launcher cannot change it. A rebuilt payload gets its own cache directory.
+  StrCpy $R1 "${APP_64_HASH}" 64
+  StrCpy $CacheBuild "$CacheHome\MD\Runtime\$R1"
+  ClearErrors
+  CreateDirectory "$CacheBuild"
+  IfErrors prepare_failed
 
+  ; The file may remain after a crash. Ownership is its noninherited, exclusive
+  ; OS handle, not file existence. This also serializes separate logon sessions.
+  StrCpy $CacheWait 0
+acquire_lock:
+  System::Call 'kernel32::CreateFileW(w "$CacheBuild\prepare.lock", i 0xC0000000, i 0, p 0, i 4, i 0x80, p 0) p.r0 ?e'
+  Pop $R1
+  StrCpy $CacheLock $0
+  StrCmp $CacheLock -1 0 find_runtime
+  StrCmp $R1 32 0 prepare_failed
+  Call ShowPreparation
+  IntOp $CacheWait $CacheWait + 1
+  IntCmp $CacheWait 1200 lock_timeout 0 lock_timeout
+  Sleep 50
+  Goto acquire_lock
+
+find_runtime:
+  StrCpy $CacheGeneration 1
+next_generation:
+  StrCpy $INSTDIR "$CacheBuild\$CacheGeneration"
+  ; Never repair or remove a published generation: another app process may
+  ; still need its lazy-loaded files. Any complete generation is equivalent.
+  System::Call 'kernel32::GetFileAttributesW(w "$INSTDIR") i.r0'
+  StrCmp $0 -1 prepare_runtime
+  IntOp $R1 $0 & 0x400
+  StrCmp $R1 0 0 advance_generation
+  Call ValidateRuntime
+  StrCmp $CacheValid 1 launch
+advance_generation:
+  IntOp $CacheGeneration $CacheGeneration + 1
+  IntCmp $CacheGeneration 1000000 prepare_failed next_generation prepare_failed
+
+prepare_runtime:
+  Call ShowPreparation
+  StrCpy $CacheDestination $INSTDIR
+  ClearErrors
+  GetTempFileName $CacheStage "$CacheBuild"
+  IfErrors prepare_failed
+  Delete "$CacheStage"
+  IfErrors prepare_failed
+  CreateDirectory "$CacheStage"
+  IfErrors prepare_failed
+  StrCpy $INSTDIR $CacheStage
+  SetOutPath "$INSTDIR"
+  SetOverwrite try
+  ClearErrors
+  SetCompress off
+  File /r "${PROJECT_DIR}\.packaged\MD-win32-x64\*.*"
+  IfErrors prepare_failed
+  ; CNG already checks every file's size and full digest. Avoid reopening the
+  ; entire newly extracted runtime for a redundant metadata-only pass.
+  Call VerifyRuntimeHashes
+  StrCmp $CacheValid 1 0 prepare_failed
+  ClearErrors
+  FileOpen $CheckHandle "$INSTDIR\.complete" w
+  IfErrors prepare_failed
+  FileWrite $CheckHandle "sha256:${APP_64_HASH}"
+  IfErrors marker_failed
+  FileClose $CheckHandle
+  IfErrors prepare_failed
+  ; Same-volume rename publishes only the fully written, validated directory.
+  SetOutPath "$CacheBuild"
+  ClearErrors
+  Rename "$CacheStage" "$CacheDestination"
+  IfErrors prepare_failed
+  StrCpy $INSTDIR $CacheDestination
+  StrCpy $CacheStage ""
+
+launch:
+  Call ReleaseCacheLock
+  Call HidePreparation
   System::Call 'kernel32::SetEnvironmentVariable(t "PORTABLE_EXECUTABLE_DIR", t "$EXEDIR") i.r0'
   System::Call 'kernel32::SetEnvironmentVariable(t "PORTABLE_EXECUTABLE_FILE", t "$EXEPATH") i.r0'
   System::Call 'kernel32::SetEnvironmentVariable(t "MD_PORTABLE_RUNTIME", t "$INSTDIR\${APP_EXECUTABLE_FILENAME}") i.r0'
@@ -36,19 +233,39 @@ Section
   ClearErrors
   ExecWait '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" $R0' $0
   ${If} ${Errors}
+    Call InvalidateRuntime
     MessageBox MB_OK|MB_ICONSTOP "无法打开 MD，请检查可用磁盘空间并重新下载程序。$\nMD could not start. Check free disk space and download the application again."
     StrCpy $0 1
   ${ElseIf} $0 != 0
+    Call InvalidateRuntime
     MessageBox MB_OK|MB_ICONSTOP "MD 未能正常运行（代码 $0）。请检查可用磁盘空间，或重新下载程序。$\nMD did not exit normally (code $0). Check free disk space or download the application again."
   ${EndIf}
-  Goto cleanup
-unpack_failed:
-  Banner::destroy
-  MessageBox MB_OK|MB_ICONSTOP "无法展开 MD 运行文件。请检查临时目录的可用空间和权限，然后重试。$\nCould not prepare MD. Check free space and access to your temporary folder, then try again."
-  StrCpy $0 1
-cleanup:
   SetErrorLevel $0
-  ; Only remove this launch's own runtime, after its Electron main process exits.
-  SetOutPath $EXEDIR
-  RMDir /r $INSTDIR
+  Goto finished
+
+marker_failed:
+  FileClose $CheckHandle
+  Goto prepare_failed
+invalid_cache_home:
+  StrCpy $FailureText "MD 缓存目录必须是完整的绝对路径。$\nThe MD cache directory must be an absolute path."
+  Goto prepare_failed
+lock_timeout:
+  StrCpy $FailureText "另一个 MD 进程仍在准备运行文件，请稍后重试。$\nAnother MD process is preparing the runtime. Please try again shortly."
+prepare_failed:
+  Call ReleaseCacheLock
+  Call HidePreparation
+  ; Only clean the unique staging path created by this invocation. Keep every
+  ; published generation and every other version, including damaged ones.
+  StrCmp $CacheStage "" show_failure
+  GetFullPathName $R1 "$CacheStage"
+  StrCpy $R2 "$CacheBuild\"
+  StrLen $R3 $R2
+  StrCpy $R4 $R1 $R3
+  StrCmp $R4 $R2 0 show_failure
+  SetOutPath "$EXEDIR"
+  RMDir /r "$CacheStage"
+show_failure:
+  MessageBox MB_OK|MB_ICONSTOP "$FailureText"
+  SetErrorLevel 1
+finished:
 SectionEnd

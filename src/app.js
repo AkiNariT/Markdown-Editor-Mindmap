@@ -186,7 +186,7 @@ function stashActive() {
   if (viewMode !== 'render') { state.sourceScroll = state.source.input.scrollTop; state.sourceLeft = state.source.input.scrollLeft; }
   Object.assign(state, { current, editor, baseline, baselineMetadata, documentParts, dirty, editing, metadata: skillValues(), scroll: state.viewScroll.render, view: viewMode });
 }
-function createSession(value) {
+function createSession(value, mountEditor = false) {
   if (isMindmap(value)) {
     const state = { current: value, dirty: false, editing: Boolean(value.editable), zoom: 100, view: 'mindmap' };
     state.map = createMindmapView(value.mapData, {
@@ -211,7 +211,7 @@ function createSession(value) {
   state.source = createSourceEditor(context => { const live = sessions.get(value.id); if (loaded && live && current?.id === value.id) sourceInput(live, context); });
   state.source.setText(toSourceText(value.content));
   state.source.input.addEventListener('scroll', () => { if (loaded && current?.id === value.id) syncScroll('source'); });
-  state.editor = createEditor(state.host, parts ? parts.body : value.content, { editable: false, imageURL: src => imageURL(src, state.current),
+  state.editor = createEditor(mountEditor ? state.host : null, parts ? parts.body : value.content, { editable: false, imageURL: src => imageURL(src, state.current),
     onUpdate: ({ transaction }) => { if (loaded && visualView() && transaction.docChanged && current?.id === value.id) markVisualChange(state); },
     onSelectionUpdate: () => { if (loaded && current?.id === value.id) updateSelection(); } });
   state.baseline = state.editor.getMarkdown().trimEnd();
@@ -221,7 +221,10 @@ function createSession(value) {
   state.viewsSeen = new Set(['render']);
   state.previewRevision = 0;
   state.zoom = 100; state.viewZoom = { render: 100, compare: 100 }; state.viewAnchors = {}; state.sourceLeft = 0;
-  return applyRecovery(state, value.recovery);
+  applyRecovery(state, value.recovery);
+  // Background sessions start with document state only; create their view when selected.
+  state.editorMounted = mountEditor;
+  return state;
 }
 function contentFor(id) {
   if (id === current?.id) return content();
@@ -403,8 +406,12 @@ function updateState() {
 function loadDocument(docData) {
   sessions.get(current?.id)?.map?.setLocked?.(true);
   stashActive(); editor?.view.dom.blur(); sessions.get(current?.id)?.source?.input.blur(); loaded = false;
+  const previous = sessions.get(current?.id);
+  if (previous?.editorMounted && current.id !== docData.id) {
+    previous.editor.unmount(); previous.editorMounted = false;
+  }
   if (docData.tabs) tabOrder = docData.tabs;
-  if (!sessions.has(docData.id)) sessions.set(docData.id, createSession(docData));
+  if (!sessions.has(docData.id)) sessions.set(docData.id, createSession(docData, true));
   const state = sessions.get(docData.id);
   $('document-pane').hidden = Boolean(state.map); $('mindmap-pane').hidden = !state.map; $('view-switch').hidden = Boolean(state.map);
   if (state.map) {
@@ -416,6 +423,7 @@ function loadDocument(docData) {
     renderTabs(); revealActiveTab(); return;
   }
   const scroll = state.viewScroll[state.view] || 0, sourceScroll = state.sourceScroll, sourceLeft = state.sourceLeft;
+  if (!state.editorMounted) { state.editor.mount(state.host); state.editorMounted = true; }
   ({ current, editor, baseline, baselineMetadata, documentParts, dirty } = state);
   $('editor').replaceChildren(state.host);
   $('source-container').replaceChildren(state.source.host);
@@ -572,8 +580,11 @@ function applySaved(result) {
     state.projection = { markdown: state.baseline, metadata: state.baselineMetadata, content: result.content, lossy: false };
     if (active) { ({ current, documentParts, baseline, baselineMetadata, dirty } = state); updateDocumentChrome(); updateState(); }
   } else {
-    const replacement = createSession(result);
-    if (state.source.getText() === toSourceText(result.content)) { replacement.source = state.source; replacement.source.setText(toSourceText(result.content), { context: { lossy: false } }); }
+    const replacement = createSession(result, active);
+    if (state.source.getText() === toSourceText(result.content)) {
+      replacement.source.destroy(); replacement.source = state.source;
+      replacement.source.setText(toSourceText(result.content), { context: { lossy: false } });
+    } else state.source.destroy();
     Object.assign(replacement, { editing: state.editing, scroll: state.scroll, outline: state.outline, view: state.view, viewScroll: { ...state.viewScroll }, sourceScroll: state.sourceScroll, sourceLeft: state.sourceLeft, zoom: state.zoom, viewZoom: { ...state.viewZoom }, viewAnchors: { ...state.viewAnchors }, syncScroll: state.syncScroll, authority: state.authority, viewsSeen: new Set(state.viewsSeen) });
     replacement.source.input.setSelectionRange(Math.min(state.source.input.selectionStart, replacement.source.getText().length), Math.min(state.source.input.selectionEnd, replacement.source.getText().length));
     if (active) loaded = false;
@@ -821,13 +832,29 @@ api.onClosed(({ id, document }) => {
   else { tabOrder = document.tabs; renderTabs(); }
 });
 onLocaleChange(refreshLanguage);
+function markDocumentReady() {
+  // Record the rendered document independently of a benchmark's CDP attach
+  // time. A hidden/minimized window is not counted as visibly ready.
+  const recordWhenVisible = () => {
+    if (document.visibilityState !== 'visible') {
+      document.addEventListener('visibilitychange', recordWhenVisible, { once: true });
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (document.visibilityState !== 'visible') { recordWhenVisible(); return; }
+      if (!performance.getEntriesByName('md-document-ready', 'mark').length) performance.mark('md-document-ready');
+    }));
+  };
+  recordWhenVisible();
+}
 async function initialize() {
   const settings = unpack(await api.getSettings()); setLocale(settings.language); refreshLanguage();
   const { documents = [], recoveryNotice, ...document } = unpack(await api.ready());
-  for (const value of documents) sessions.set(value.id, createSession(value));
+  for (const value of documents) sessions.set(value.id, createSession(value, value.id === document.id));
   loadDocument(document);
   if (recoveryNotice) toast(recoveryNotice, true);
   checkpoint.schedule();
   unpack(await api.sessionReady());
+  markDocumentReady();
 }
 initialize().catch(error => toast(t('无法打开文档：{message}', { message: error.message }), true));

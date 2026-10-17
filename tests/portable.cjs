@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { access, copyFile, mkdir, mkdtemp, readFile, readdir, stat, writeFile } = require('node:fs/promises');
+const { access, copyFile, mkdir, mkdtemp, readFile, readdir, stat, writeFile, unlink } = require('node:fs/promises');
 const { fileURLToPath } = require('node:url');
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 // Exercise the actual self-extracting executable, not the unpacked Electron app.
 // Only these unique fixtures/profiles and the processes launched below are used.
 const launched = new Set();
+let cacheHome;
 const execute = promisify(execFile);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(read, accept, description, timeout = 30000) {
@@ -25,6 +26,7 @@ function run(executable, profile, cwd, files = []) {
   const startedAt = Date.now();
   const child = spawn(executable, [...files, '--user-data-dir=' + profile, '--remote-debugging-port=0'], {
     cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, MD_PORTABLE_CACHE_HOME: cacheHome },
   });
   const item = { child, browser: null, page: null, result: null, output: '', profile, startedAt };
   const capture = chunk => { item.output = (item.output + chunk).slice(-12000); };
@@ -66,12 +68,11 @@ async function attach(item) {
   console.log(`READY ${path.basename(item.profile)}: ${((Date.now() - item.startedAt) / 1000).toFixed(1)}s`);
   return item.page;
 }
-async function removedRuntime(item) {
+async function preservedRuntime(item) {
   assert.equal(item.result?.code, 0, 'The wrapper must exit normally after the test window closes.');
-  await until(async () => {
-    try { await access(item.runtimeDirectory); return false; }
-    catch (error) { if (error.code === 'ENOENT') return true; throw error; }
-  }, Boolean, 'private runtime removed after normal exit');
+  await access(path.join(item.runtimeDirectory, 'MD.exe'));
+  assert.ok(item.runtimeDirectory.toLowerCase().startsWith((cacheHome + path.sep).toLowerCase()),
+    'A complete runtime must remain in the isolated persistent cache after normal exit.');
 }
 async function close(item) {
   if (item.browser) {
@@ -100,6 +101,7 @@ const ready = page => page.evaluate(() => window.moye.ready());
   const base = path.resolve(__dirname, '../.desktop-test');
   await mkdir(base, { recursive: true });
   const directory = await mkdtemp(path.join(base, 'single-file-'));
+  cacheHome = path.join(directory, '缓存 目录');
   const desktop = path.join(directory, '桌面 模拟');
   const renamed = path.join(directory, '另一个位置 中文');
   const documents = path.join(directory, '启动目录 文档');
@@ -112,17 +114,15 @@ const ready = page => page.evaluate(() => window.moye.ready());
   assert.deepEqual(await readdir(renamed), ['我的 Markdown.exe']);
 
   const first = run(desktopExe, path.join(directory, 'profile-plain'), documents);
-  await until(() => launcherWindow(first), window => window.handle !== 0 && window.title === 'MD', 'visible startup feedback before extraction finishes');
-  console.log(`BANNER visible: ${((Date.now() - first.startedAt) / 1000).toFixed(1)}s`);
   const plainPage = await attach(first);
   assert.equal((await launcherWindow(first)).handle, 0, 'The extraction banner must disappear once the actual app is ready.');
-  assert.equal((await plainPage.evaluate(() => window.moye.getAppInfo())).version, require('../package.json').version);
+  assert.equal((await plainPage.evaluate(() => window.moye.getAppInfo())).version, process.env.MOYE_PORTABLE_EXPECT_VERSION || require('../package.json').version);
   assert.equal((await ready(plainPage)).path, null, 'A copied executable starts without a document argument.');
   assert.equal((await ready(plainPage)).documents.length, 1);
   await close(first);
-  await removedRuntime(first);
+  await preservedRuntime(first);
   assert.deepEqual(await readdir(desktop), ['MD.exe'], 'The launcher must not require generated files beside the desktop icon.');
-  console.log('PASS lone executable in a Chinese/space desktop folder, visible startup feedback and banner disappears when ready');
+  console.log('PASS lone executable in a Chinese/space desktop folder and persistent completed runtime');
 
   const note = path.join(documents, '第一份 笔记.md');
   const map = path.join(documents, '关联 导图.mdmap');
@@ -139,6 +139,7 @@ const ready = page => page.evaluate(() => window.moye.ready());
   const profile = path.join(directory, 'profile-renamed');
   const active = run(renamedExe, profile, documents, [path.basename(note)]);
   const page = await attach(active);
+  assert.equal(active.runtimeDirectory, first.runtimeDirectory, 'Copying or renaming the same EXE must reuse its complete runtime.');
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const initialState = await ready(page);
   assert.equal(initialState.path, note, 'Initial relative paths resolve against the caller directory, not the extraction directory.');
@@ -152,8 +153,9 @@ const ready = page => page.evaluate(() => window.moye.ready());
   await page.waitForFunction(() => !document.querySelector('#save').disabled);
   console.log('PASS renamed executable, initial relative Markdown path, source editing and saving');
 
-  // The second wrapper must forward files and leave the first extraction alive
-  // after it exits. A shared extraction directory can break this exact case.
+  // Cached launches forward files without replacing or deleting the runtime
+  // still used by another window/process.
+  const runtimeTime = (await stat(path.join(active.runtimeDirectory, 'MD.exe'))).mtimeMs;
   const second = run(renamedExe, profile, documents, [path.basename(map)]);
   const secondResult = await until(() => second.result, Boolean, 'second portable wrapper exits', 90000);
   assert.equal(secondResult.code, 0, JSON.stringify(secondResult) + '\n' + second.output);
@@ -161,6 +163,7 @@ const ready = page => page.evaluate(() => window.moye.ready());
   const mapState = await until(() => ready(page), state => state.path === map && state.documents.length === 2, 'second launch opens map in the existing window');
   assert.equal(mapState.type, 'mindmap');
   assert.equal(active.result, null, 'The first launcher/runtime remains alive after the second launcher exits.');
+  assert.equal((await stat(path.join(active.runtimeDirectory, 'MD.exe'))).mtimeMs, runtimeTime, 'A complete cache hit must not rewrite runtime files.');
   assert.equal(active.browser.contexts().flatMap(context => context.pages()).length, 1, 'Second launch reuses the existing window.');
   assert.equal(await page.locator('[data-node-id=root]').textContent(), '单文件导图');
   await page.locator('[data-node-id=linked]').dblclick();
@@ -168,8 +171,8 @@ const ready = page => page.evaluate(() => window.moye.ready());
   assert.equal(reopened.documents.length, 2);
   assert.equal(reopened.content, edited);
   assert.equal(await readFile(note, 'utf8'), edited);
-  // Reload must still read the runtime's packaged UI after second-wrapper
-  // cleanup, catching a deletion that a previously loaded page could conceal.
+  // Reload must still read the runtime's packaged UI after the second wrapper
+  // exits, catching a deletion that a previously loaded page could conceal.
   await page.reload();
   await page.waitForSelector('[role=tab]');
   await page.waitForFunction(() => window.moye && !document.querySelector('#mode').disabled);
@@ -178,19 +181,52 @@ const ready = page => page.evaluate(() => window.moye.ready());
   assert.deepEqual(errors, []);
   await page.screenshot({ path: path.join(directory, 'portable-single-file.png') });
   await close(active);
-  await removedRuntime(active);
-  console.log('PASS second concurrent wrapper, relative mindmap path, linked tab reuse and runtime survives wrapper cleanup/reload');
+  await preservedRuntime(active);
+  console.log('PASS second wrapper, relative mindmap path, linked tab reuse and runtime survives wrapper exit/reload');
   const restarted = run(renamedExe, profile, documents);
   const restoredPage = await attach(restarted);
   const restored = await ready(restoredPage);
   assert.equal(restored.path, note, 'Restart without file arguments restores the previous active document.');
-  assert.equal(restored.documents.length, 2, 'Saved session tabs survive runtime cleanup.');
+  assert.equal(restored.documents.length, 2, 'Saved session tabs survive application restart.');
   assert.equal(restored.content, edited);
-  assert.notEqual(restarted.runtimeDirectory, active.runtimeDirectory, 'Each launch uses its own runtime directory.');
+  assert.equal(restarted.runtimeDirectory, active.runtimeDirectory, 'Subsequent launches reuse a completed runtime.');
+  // Corrupt only a test-owned, noncritical template in the cache. A repair must
+  // create another immutable generation without removing the active runtime.
+  const template = path.join(restarted.runtimeDirectory, 'resources/app/assets/templates/SKILL.en.md');
+  await unlink(template);
+  const repaired = run(desktopExe, path.join(directory, 'profile-repaired'), documents);
+  const repairedPage = await attach(repaired);
+  assert.notEqual(repaired.runtimeDirectory, restarted.runtimeDirectory, 'Missing runtime files require a fresh generation.');
+  await access(path.join(repaired.runtimeDirectory, 'resources/app/assets/templates/SKILL.en.md'));
+  await access(path.join(restarted.runtimeDirectory, 'MD.exe'));
+  await restoredPage.reload();
+  await restoredPage.waitForSelector('[role=tab]');
+  assert.equal((await ready(restoredPage)).path, note, 'Repair must keep a running generation usable.');
+  await close(repaired);
+  await preservedRuntime(repaired);
+  await writeFile(path.join(repaired.runtimeDirectory, 'resources/app/assets/templates/SKILL.en.md'), '# truncated');
+  const truncatedRepair = run(desktopExe, path.join(directory, 'profile-truncated'), documents);
+  await attach(truncatedRepair);
+  assert.notEqual(truncatedRepair.runtimeDirectory, repaired.runtimeDirectory, 'Truncated runtime files require a fresh generation.');
+  const restoredTemplate = await readFile(path.join(truncatedRepair.runtimeDirectory, 'resources/app/assets/templates/SKILL.en.md'), 'utf8');
+  assert.ok(restoredTemplate.length > '# truncated'.length);
+  await access(path.join(repaired.runtimeDirectory, 'MD.exe'));
+  await close(truncatedRepair);
+  await preservedRuntime(truncatedRepair);
   await close(restarted);
-  await removedRuntime(restarted);
+  await preservedRuntime(restarted);
   assert.deepEqual(await readdir(renamed), ['我的 Markdown.exe']);
-  console.log('PASS normal-exit runtime cleanup and saved session restoration across independent extractions');
+  console.log('PASS cache reuse, saved session restoration and repair without removing an active generation');
+  cacheHome = path.join(directory, '并发 全新缓存');
+  const parallelA = run(desktopExe, path.join(directory, 'profile-parallel-a'), documents);
+  const parallelB = run(renamedExe, path.join(directory, 'profile-parallel-b'), documents);
+  await Promise.all([attach(parallelA), attach(parallelB)]);
+  assert.equal(parallelA.runtimeDirectory, parallelB.runtimeDirectory, 'Concurrent cold launches must publish and reuse one complete generation.');
+  await close(parallelA);
+  await close(parallelB);
+  await preservedRuntime(parallelA);
+  await preservedRuntime(parallelB);
+  console.log('PASS concurrent first launches share a complete immutable cache');
   console.log('PORTABLE PASS; isolated fixtures: ' + directory);
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   for (const item of launched) await close(item);

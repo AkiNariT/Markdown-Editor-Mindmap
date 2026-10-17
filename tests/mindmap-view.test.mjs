@@ -69,7 +69,7 @@ test('reading exposes only relevant navigation controls and editing restores the
     assert.deepEqual(visibleTools(), ['子主题', '同级主题', '删除', '关联 Markdown', '打开文件', '取消关联', '折叠', '居中']);
     assert.equal(view.host.querySelector('[aria-label="节点文字"]').readOnly, false);
     assert.equal(view.host.querySelector('[data-palette=blue]').disabled, false);
-    assert.match(view.host.querySelector('.mindmap-hint').textContent, /拖动节点调整位置/);
+    assert.match(view.host.querySelector('.mindmap-hint').textContent, /拖动节点靠近时对齐/);
     assert.equal(nodeButton(view, 'a').getAttribute('aria-pressed'), 'true');
     assert.deepEqual(data.nodes.map(item => point(view, item.id)), positions);
     assert.equal(view.getText(), before); assert.equal(fixture.changes.length, 0);
@@ -432,7 +432,8 @@ test('scrolling a long context menu keeps the menu open while canvas scroll clos
     assert.ok(menu);
     menu.dispatchEvent(new dom.window.Event('scroll'));
     assert.equal(view.host.querySelector('[role="menu"]'), menu);
-    view.host.querySelector('.mindmap-canvas').dispatchEvent(new dom.window.Event('scroll'));
+    const canvas = view.host.querySelector('.mindmap-canvas'); canvas.scrollLeft += 20;
+    canvas.dispatchEvent(new dom.window.Event('scroll'));
     assert.equal(view.host.querySelector('[role="menu"]'), null);
   } finally { state.close(); }
 });
@@ -493,7 +494,7 @@ test('context menu closes on outside click, Escape, scroll, resize and editing c
       view.setEditable(true); assert.ok(context(view, 'root'));
       if (reason === 'outside') document.body.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }));
       else if (reason === 'Escape') document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      else if (reason === 'scroll') view.host.querySelector('.mindmap-canvas').dispatchEvent(new dom.window.Event('scroll'));
+      else if (reason === 'scroll') { const canvas = view.host.querySelector('.mindmap-canvas'); canvas.scrollTop += 20; canvas.dispatchEvent(new dom.window.Event('scroll')); }
       else if (reason === 'resize') dom.window.dispatchEvent(new dom.window.Event('resize'));
       else view.setEditable(false);
       assert.equal(view.host.querySelector('[role="menu"]'), null, reason);
@@ -567,7 +568,10 @@ test('deleting a subtree deletes attached connections in the same undo transacti
 });
 
 test('tree lines use the facing node edges after nodes are moved left of their parent', () => {
-  const state = setup(branch()); const { view } = state;
+  // Hide the grandchild: after this large reverse drag it would cover the
+  // root's left port and correctly force obstacle routing to another edge.
+  const data = branch(); data.nodes[1].collapsed = true;
+  const state = setup(data); const { view } = state;
   try {
     startDrag(view, 'a'); moveDrag(view, -420, 200); moveDrag(view, -420, 200, 'pointerup');
     const root = point(view, 'root'), a = point(view, 'a');

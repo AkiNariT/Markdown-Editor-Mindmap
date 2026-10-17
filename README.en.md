@@ -2,9 +2,9 @@
 
 Markdown-Editor-Mindmap (MD) is a minimal desktop Markdown reader and editor with visual editing, source/split views, and mindmaps linked to local Markdown files.
 
-[简体中文](README.md) · [Download 0.1.26](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.26) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
+[简体中文](README.md) · [Download 0.1.28](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.28) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
-**New in 0.1.26:** The single-file portable `MD-Windows-x64-0.1.26.exe` can be copied to your Desktop and run on its own. You can rename it. An “Opening MD” message appears during startup; default-app registration and program-path copying use the outer EXE you saved. The complete folder ZIP remains available. See the [changelog](CHANGELOG.md) and [validation record](docs/VALIDATION-0.1.26.md).
+**New in 0.1.28:** Mindmaps gain alignment guides while dragging, movement of multiple selected nodes, and connections that route around intervening nodes. The single-file app reuses a local runtime cache, and inactive Markdown tabs unload their editor views to reduce memory use. This public preview includes the local 0.1.27 optimizations. See the [changelog](CHANGELOG.md) and [validation record](docs/VALIDATION-0.1.28.md).
 
 ## Development approach
 
@@ -14,25 +14,27 @@ This project is developed primarily with AI tools.
 
 ### Recommended: single-file EXE
 
-**[Download the Windows x64 single-file EXE](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.26/MD-Windows-x64-0.1.26.exe)**
+**[Download the Windows x64 single-file EXE](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.28/MD-Windows-x64-0.1.28.exe)**
 
-1. Put `MD-Windows-x64-0.1.26.exe` on your Desktop or in another convenient location.
+1. Put `MD-Windows-x64-0.1.28.exe` on your Desktop or in another convenient location. Renaming is supported.
 2. Double-click it. No installation, administrator access or additional runtime download is required.
-3. Each launch unpacks its runtime into a local temporary folder. Please wait while “Opening MD” is shown; startup time depends on your disk and system load. Before upgrading, save your work and close the old version normally, then open the new file.
+3. The first launch prepares runtime files under `%LOCALAPPDATA%\MD\Runtime`. Later launches reuse a complete cache; missing, truncated or explicitly failed runtimes trigger preparation of a new copy. Please wait while “Opening MD” is shown; startup time depends on your disk and system load. Before upgrading, save your work and close the old version normally, then open the new file.
+
+The single-file download is about **337 MB**. It embeds uncompressed runtime files to reduce preparation steps, trading a larger download for startup improvements; first launch within two seconds is not guaranteed. The runtime cache contains program files only and remains after exit. Updates and repairs may retain older copies. To clear it, save your documents and close every MD instance before deleting that runtime cache; the next launch prepares it again.
 
 Settings and draft backups remain in `%APPDATA%\MD` for the current Windows user. Copying the executable does not transfer this data. Save your documents in your own folders. If you set MD as the default app, repeat that setup after moving or renaming the executable.
 
 ### Alternative: complete folder ZIP
 
-**[Download the Windows x64 complete folder ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.26/MD-Windows-x64-0.1.26.zip)**
+**[Download the Windows x64 complete folder ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.28/MD-Windows-x64-0.1.28.zip)**
 
 Extract the whole archive and run `MD.exe`. Keep the application folder intact: the `MD.exe` inside a folder ZIP needs its accompanying files and cannot be copied on its own. For an upgrade, extract the new version to a separate folder, save your work and close the previous version normally, then run the new executable. Run only one instance with the same user data. Node.js is not required to use the download.
 
-The current download, **0.1.26, is a public preview**. Windows 10/11 x64 are the targets; existing desktop validation uses Windows 11 x64. A separate Windows 10 machine has not been tested. The portable builds are unsigned and have no installer. See the [validation record](docs/VALIDATION-0.1.26.md) for this release's actual checks and limitations. Application downloads, source, standalone templates and checksums are on the [0.1.26 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.26).
+The current download, **0.1.28, is a public preview**. Windows 10/11 x64 are the targets; existing desktop validation uses Windows 11 x64. A separate Windows 10 machine has not been tested. The portable builds are unsigned and have no installer. See the [validation record](docs/VALIDATION-0.1.28.md) for this release's actual checks and limitations. The [0.1.28 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.28) provides six assets: the single-file EXE, complete folder ZIP, source ZIP, `SKILL.md`, `SKILL.en.md` and `SHA256SUMS.txt`.
 
 Default app: Open **More (…) → Settings → Set default app** to register the current application locally and open Windows Settings, then choose MD for `.md` and `.markdown`. If registration fails, use Open Windows Settings to continue manually. Copy program path supplies the path for the system file picker, and View error details shows the cause and error code. Windows confirms the final default selection. Repeat this from the new location after upgrading, moving or renaming the application.
 
-The 0.1.26 single-file version registers the outer EXE that you saved. Copy program path also uses that file's location.
+The single-file version registers the outer EXE that you saved. Copy program path also uses that file's location.
 
 To check for updates, open **More (…) → Check for updates** or **Settings → Check for updates**, then click the check button in the dialog. This manually retrieves public releases from this repository, including public prereleases, and shows your version, the newest compatible Windows x64 version and plain-text release notes. The release-page button opens a verified official release page in your browser. Download and upgrade using the steps above. MD does not check automatically in the background or automatically download, install or restart. Close the dialog to continue editing and saving documents.
 
@@ -43,7 +45,7 @@ To check for updates, open **More (…) → Check for updates** or **Settings �
 - Read and edit formatted Markdown, including headings, lists, tasks, quotes, tables, images and highlighted code blocks.
 - Edit source and formatted content together in Split view, with shared undo/redo.
 - Keep multiple documents, individual reading positions, zoom and unsaved changes.
-- Create mindmap nodes, drag branches, add labeled relationships, apply fixed palettes and choose six whole-map styles.
+- Create mindmap nodes, use drag alignment guides, move multiple selected nodes, route connections around nodes, add labeled relationships, apply fixed palettes and choose six whole-map styles.
 - Link nodes to Markdown files; double-click an unlinked node to write a draft, then create and link its file on the first successful save.
 - Register the portable app with Windows, open default-app settings, copy its path and inspect errors; the final default selection remains yours.
 - Recover local drafts and session state. Original files still require Save.
@@ -52,6 +54,8 @@ To check for updates, open **More (…) → Check for updates** or **Settings �
 - Create documents from the included Chinese/English SKILL templates, preserving YAML frontmatter.
 
 Fixed palettes and relationship labels use map format **v4**. Whole-map styles use **v5**, requiring MD 0.1.22 or later. Existing v1 through v4 maps still open; old colors are preserved and retired Note/Double border shapes display as Classic. Keep linked Markdown files and their relative directory structure when sharing maps.
+
+In Edit mode, drag a node near another node's row or column to show blue dashed alignment guides and snap into place. Drag farther to release, or hold `Alt` to move freely. `Ctrl`/`Shift`-click multiple nodes, release the modifier key, then drag the group. Selecting both a parent and a child does not move the child twice. Guides disappear on release or cancellation. Alignment and connection routing do not rearrange the whole map; leave space between cards, as fully overlapping nodes may still obscure connections. Large, complex maps still incur routing costs.
 
 ## Privacy and license
 
@@ -72,4 +76,4 @@ npm run package
 npm run package:portable
 ```
 
-`npm run package` produces the folder build in `.packaged/MD-win32-x64`; `npm run package:portable` builds that folder and then `.packaged/portable/MD-Windows-x64-VERSION.exe`. Initial dependency installation/builds may download runtimes and packaging tools. The finished single-file app does not download runtime components when launched. Read [CONTRIBUTING.md](CONTRIBUTING.md), [release maintenance](docs/RELEASING.md), [0.1.26 validation](docs/VALIDATION-0.1.26.md) and [security reporting](SECURITY.md) before contributing.
+`npm run package` produces the folder build in `.packaged/MD-win32-x64`; `npm run package:portable` builds that folder and then `.packaged/portable/MD-Windows-x64-VERSION.exe`. Initial dependency installation/builds may download runtimes and packaging tools. The finished single-file app does not download runtime components when launched. Read [CONTRIBUTING.md](CONTRIBUTING.md), [release maintenance](docs/RELEASING.md), [0.1.28 validation](docs/VALIDATION-0.1.28.md) and [security reporting](SECURITY.md) before contributing.

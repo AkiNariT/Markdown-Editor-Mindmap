@@ -19,7 +19,13 @@ const documents = new Map();
 const pending = new Map();
 const root = path.resolve(__dirname, '..');
 app.setName('MD');
+// This application renders text and SVG rather than video/WebGL. Software
+// compositing avoids the large idle GPU allocation on Windows; keep renderer
+// sandboxing and context isolation unchanged.
+if (process.platform === 'win32') app.disableHardwareAcceleration();
 if (process.platform === 'win32') app.setAppUserModelId('Moye.MD');
+// Avoid constructing Electron's default menu only to remove it after ready.
+Menu.setApplicationMenu(null);
 const imageTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
 const markdownPath = name => typeof name === 'string' && /\.(md|markdown)$/i.test(name);
 const mindmapPath = name => typeof name === 'string' && /\.mdmap$/i.test(name);
@@ -375,7 +381,6 @@ if (ownsProfile) app.whenReady().then(async () => {
   win = new BrowserWindow({ ...placement.bounds, minWidth: placement.minWidth, minHeight: placement.minHeight, show: false, title: 'MD', icon: path.join(root, 'assets/icon.ico'), backgroundColor: '#f8f7f4', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false }, });
   applyWindowBounds(placement.bounds);
-  Menu.setApplicationMenu(null);
   await restoreSession();
   openQueue = queueModule.createOpenQueue({
     canRun: () => (openingInitial || rendererReady) && !busy && !closing && win && !win.isDestroyed(),
