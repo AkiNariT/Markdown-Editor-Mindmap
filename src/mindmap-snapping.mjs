@@ -29,16 +29,23 @@ function closest(entries, axis, origin, delta, otherCoordinate, radius, minimum,
 /** Create once per drag, from visible document-space card positions. */
 export function createMindmapSnapper(positions, { anchorId, movingIds = [], width = 216, height = 96, threshold = 6 } = {}) {
   const moving = new Set(movingIds); moving.add(anchorId);
-  const start = positions.get(anchorId), anchor = start && { x: start.x, y: start.y };
+  const dimension = (value, fallback) => Number.isFinite(value) && value > 0 ? value : fallback;
+  const start = positions.get(anchorId), anchor = start && { x: start.x, y: start.y, width: dimension(start.width, width), height: dimension(start.height, height) };
   const stationary = [];
   for (const [id, point] of positions) {
-    if (!moving.has(id) && Number.isFinite(point.x) && Number.isFinite(point.y)) stationary.push({ id, key: String(id), x: point.x, y: point.y });
+    if (!moving.has(id) && Number.isFinite(point.x) && Number.isFinite(point.y)) stationary.push({ id, key: String(id), x: point.x, y: point.y, width: dimension(point.width, width), height: dimension(point.height, height) });
   }
-  // All cards share a size: left-left, center-center and right-right produce
-  // exactly the same delta. Keep one candidate and show the center guide. Do
-  // not attract facing edges or edge-to-center pairs in neighboring columns.
-  const byX = stationary.slice().sort((a, b) => a.x - b.x);
-  const byY = stationary.slice().sort((a, b) => a.y - b.y);
+  // Match like anchors only. Equal dimensions collapse to the center candidate;
+  // differently sized cards may align their corresponding edges or centers.
+  function candidates(axis, size) {
+    if (!anchor) return [];
+    return stationary.flatMap(target => (target[size] === anchor[size] ? [.5] : [.5, 0, 1]).map((fraction, index) => ({
+      ...target, cardX: target.x, cardY: target.y, key: `${target.key}:${index}`,
+      [axis]: target[axis] + (target[size] - anchor[size]) * fraction,
+      guide: target[axis] + target[size] * fraction,
+    }))).sort((a, b) => a[axis] - b[axis]);
+  }
+  const byX = candidates('x', 'width'), byY = candidates('y', 'height');
 
   return {
     snap(dx, dy, { zoom = 100, disabled = false, bounds = {} } = {}) {
@@ -50,15 +57,15 @@ export function createMindmapSnapper(positions, { anchorId, movingIds = [], widt
       const snappedX = horizontal ? horizontal.delta : dx, snappedY = vertical ? vertical.delta : dy;
       const guides = [], margin = 12 / scale;
       if (horizontal) guides.push({
-        axis: 'x', value: horizontal.target.x + width / 2,
-        start: Math.min(anchor.y + snappedY, horizontal.target.y) - margin,
-        end: Math.max(anchor.y + snappedY, horizontal.target.y) + height + margin,
+        axis: 'x', value: horizontal.target.guide,
+        start: Math.min(anchor.y + snappedY, horizontal.target.cardY) - margin,
+        end: Math.max(anchor.y + snappedY + anchor.height, horizontal.target.cardY + horizontal.target.height) + margin,
         targetId: horizontal.target.id,
       });
       if (vertical) guides.push({
-        axis: 'y', value: vertical.target.y + height / 2,
-        start: Math.min(anchor.x + snappedX, vertical.target.x) - margin,
-        end: Math.max(anchor.x + snappedX, vertical.target.x) + width + margin,
+        axis: 'y', value: vertical.target.guide,
+        start: Math.min(anchor.x + snappedX, vertical.target.cardX) - margin,
+        end: Math.max(anchor.x + snappedX + anchor.width, vertical.target.cardX + vertical.target.width) + margin,
         targetId: vertical.target.id,
       });
       return { dx: snappedX, dy: snappedY, guides };

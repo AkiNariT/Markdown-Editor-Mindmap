@@ -4,9 +4,9 @@
 
 Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读与编辑器。直接编辑排版后的文字，也可以查看源码、双向对照，并用思维导图连接本地 Markdown 文件。
 
-[English](README.en.md) · [下载 0.1.28](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.28) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
+[English](README.en.md) · [下载 0.1.29](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.29) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
 
-**0.1.28 更新：** 思维导图新增拖动对齐参考线与多选移动，连线可绕开中间节点。单文件版复用本机运行缓存，后台 Markdown 标签卸载编辑器视图以减少内存占用。本次公开预览包含 0.1.27 的本地优化，详见 [更新记录](CHANGELOG.md) 与 [验证记录](docs/VALIDATION-0.1.28.md)。
+**0.1.29 更新：** 根据首轮使用反馈，增加导图连线样式、三档节点宽度、完整长标题与备注、关系线箭头和配色、可撤销的整理布局；支持 SVG／PNG／PDF 导出、总览加分章和 Markdown 标题转导图，并加固发布版启动。详见 [反馈处理记录](docs/USER-FEEDBACK-0.1.29.md)、[更新记录](CHANGELOG.md) 与 [验证记录](docs/VALIDATION-0.1.29.md)。
 
 ## 开发方式
 
@@ -16,25 +16,25 @@ Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读�
 
 ### 推荐：单文件版
 
-**[下载 Windows x64 单文件版 EXE](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.28/MD-Windows-x64-0.1.28.exe)**
+**[下载 Windows x64 单文件版 EXE](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.29/MD-Windows-x64-0.1.29.exe)**
 
-1. 将 `MD-Windows-x64-0.1.28.exe` 放到桌面或其他常用位置，也可以改名。
+1. 将 `MD-Windows-x64-0.1.29.exe` 放到桌面或其他常用位置，也可以改名。
 2. 双击即可使用。无需安装、管理员权限或额外下载运行环境。
 3. 首次启动在 `%LOCALAPPDATA%\MD\Runtime` 准备运行缓存，后续启动复用完整缓存；缺失、截断或明确启动失败的缓存会用新副本替代。看到“正在打开 MD”时请等待，耗时取决于磁盘与系统负载。升级前先保存并正常退出旧版，再打开新版文件。
 
-单文件约 **337 MB**，通过直接内嵌未压缩运行文件减少首次准备步骤，以较大的下载体积换取启动优化；不承诺首次启动在 2 秒内完成。运行缓存只存程序文件，不随退出删除；新版本或修复可能保留旧副本。需要清理时，先保存文档并退出所有 MD 实例，再删除上述运行缓存，下一次启动会重新准备。
+单文件约 **338 MB**，通过直接内嵌未压缩运行文件减少首次准备步骤，以较大的下载体积换取启动优化；不承诺首次启动在 2 秒内完成。运行缓存只存程序文件，不随退出删除；新版本或修复可能保留旧副本。需要清理时，先保存文档并退出所有 MD 实例，再删除上述运行缓存，下一次启动会重新准备。
 
 设置与草稿仍保存在当前 Windows 用户的 `%APPDATA%\MD` 中；复制程序不会带走这些数据，文档仍需保存到自己的文件夹。如果已设置默认打开方式，移动或改名后请从新位置再次设置。
 
 ### 可选：完整文件夹版
 
-**[下载 Windows x64 完整文件夹 ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.28/MD-Windows-x64-0.1.28.zip)**
+**[下载 Windows x64 完整文件夹 ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.29/MD-Windows-x64-0.1.29.zip)**
 
 1. 解压整个 ZIP，双击其中的 `MD.exe`，无需安装 Node.js。
 2. 保留程序目录内的 DLL、resources 等文件；ZIP 内的 `MD.exe` 需要这些配套文件，不能单独复制。
 3. 升级时，将新版完整解压到独立目录，保存并正常退出旧版，再打开新版。同一用户配置只运行一个实例。
 
-适配目标是 **Windows 10 / 11 x64**；已有原生桌面验证环境为 Windows 11 x64，尚未在独立 Windows 10 机器验证。当前下载为 **0.1.28 公开预览版**，便携包未签名，不含安装器。本版本实际执行的检查与限制见 [验证记录](docs/VALIDATION-0.1.28.md)。[0.1.28 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.28) 提供六个附件：单文件 EXE、完整文件夹 ZIP、源码 ZIP、`SKILL.md`、`SKILL.en.md` 和 `SHA256SUMS.txt`。
+适配目标是 **Windows 10 / 11 x64**；已有原生桌面验证环境为 Windows 11 x64，尚未在独立 Windows 10 机器验证。当前下载为 **0.1.29 公开预览版**，便携包未签名，不含安装器。本版本实际执行的检查与限制见 [验证记录](docs/VALIDATION-0.1.29.md)。[0.1.29 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.29) 提供六个附件：单文件 EXE、完整文件夹 ZIP、源码 ZIP、`SKILL.md`、`SKILL.en.md` 和 `SHA256SUMS.txt`。
 
 默认打开方式：进入 **更多操作（…）→ 设置 → 设置默认打开方式**，为当前程序注册本机入口并打开 Windows 设置，再为 `.md` 和 `.markdown` 选择 MD。若注册失败，仍可点击“打开系统设置”手动选择；“复制程序路径”可用于系统文件选择框，“查看错误详情”会显示原因和错误代码。最终默认应用由 Windows 界面确认。升级或移动程序后，请从新位置重新设置。
 
@@ -51,7 +51,9 @@ Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读�
 | 阅读与编辑 | 所见即所得编辑；标题、列表、待办、引用、表格、图片、代码块；语法高亮 |
 | 源码与对照 | 查看完整 Markdown；双向编辑、实时预览、共享撤销重做 |
 | 多文档 | 独立标签、阅读位置、编辑状态、缩放和未保存内容；提前命名文件 |
-| 思维导图 | 拖动对齐参考线、Ctrl／Shift 多选移动、节点连线避让、连接说明、折叠、固定配色与六种整图风格 |
+| 思维导图 | 拖动对齐与多选移动、连线避让、三种连线、三档宽度、完整长标题与备注、关系线样式、折叠与整理布局 |
+| 导图外观与导出 | 固定配色、六种整图风格；SVG／PNG／PDF，原图比例／16:9／16:10／A4 横向，总览加分章 |
+| 标题转导图 | 按 Markdown 标题层级创建新导图，保留原文档；已保存的源文件可关联到节点 |
 | 导图文件关联 | 关联本地 Markdown；星标打开；双击未关联节点先写草稿，首次保存后关联 |
 | Windows 默认应用 | 注册当前便携版；打开系统设置、复制程序路径与查看错误详情；用户确认默认值 |
 | 本地恢复 | 草稿备份与重启恢复；原文件仍需显式保存 |
@@ -59,7 +61,7 @@ Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读�
 | 外观与语言 | 浅色／黑色外观，简体中文／English，Ctrl+滚轮缩放 |
 | SKILL 模板 | 按钮打开中英文模板；编辑名称、用途和正文；保留 YAML 文件头 |
 
-思维导图保存为 `.mdmap`。固定配色、背景和连接说明使用 **v4 格式**；整图风格使用 **v5 格式**，需要 MD 0.1.22 或更新版本。旧 v1 至 v4 导图仍可读取，旧配色保留，便签和双线以经典造型显示。分享导图时请同时提供其关联的 Markdown 文件，并保留相对目录结构。
+思维导图保存为 `.mdmap`。新增连线样式、节点宽度、备注和关系线外观使用 **v6 格式，需要 MD 0.1.29 或更新版本**。旧 v1 至 v5 导图仍可读取；仅含 v5 整图风格的文件最低读取版本仍为 MD 0.1.22。旧配色保留，便签和双线以经典造型显示。分享导图时请同时提供其关联的 Markdown 文件，并保留相对目录结构；导图不内嵌关联文件的正文。
 
 ## 使用与限制
 
@@ -68,6 +70,7 @@ Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读�
 - 点击顶部文件名可命名。导图编辑时，画布内的 `F2` 编辑当前节点文字或连接说明。
 - 拖动导图节点接近其他节点所在行或列时，显示蓝色虚线并吸附；拖远脱离，按住 `Alt` 暂停吸附。`Ctrl`／`Shift` 点击多选后，松开修改键再拖动整组；父子同选不会重复移动。松手或取消后参考线消失。
 - 连线避让与拖动对齐不会自动重排整张导图；请为节点留出连接空间，完全重叠的节点仍可能遮挡连线。大型复杂导图仍有路由计算成本。
+- 点击“整理布局”可清除整图手动偏移并按可见分支紧凑排列，折叠状态保留，可撤销。导图“导出”支持当前可见图，或总览加各章；SVG／PNG 分文件编号，PDF 合并为多页。导出使用浅色主题与白色页面，PNG 最多约 1600 万像素、单边 8192 像素。
 - 简体中文／English：右上角 **… → 设置 → 语言**。
 - 支持 UTF-8；单份文件最大 8 MB。部分 Markdown 扩展不能完整可视化编辑，检测到后会要求另存副本；源码模式可保留原始标记。
 - Mermaid、数学公式暂不提供图形渲染。完整兼容范围见 [使用说明](README.txt)。
@@ -94,7 +97,7 @@ npm run package
 npm run package:portable
 ```
 
-`npm run package` 生成 `.packaged/MD-win32-x64` 文件夹版；`npm run package:portable` 先构建文件夹版，再生成 `.packaged/portable/MD-Windows-x64-版本号.exe`。首次安装依赖或构建可能下载运行时及打包工具，已生成的单文件程序启动时不需要联网下载组件。运行测试和原生桌面检查的方法见 [贡献指南](CONTRIBUTING.md)；本版本的实际检查见 [验证记录](docs/VALIDATION-0.1.28.md)。
+`npm run package` 生成 `.packaged/MD-win32-x64` 文件夹版；`npm run package:portable` 先构建文件夹版，再生成 `.packaged/portable/MD-Windows-x64-版本号.exe`。首次安装依赖或构建可能下载运行时及打包工具，已生成的单文件程序启动时不需要联网下载组件。运行测试和原生桌面检查的方法见 [贡献指南](CONTRIBUTING.md)；本版本的实际检查见 [验证记录](docs/VALIDATION-0.1.29.md)。
 
 ## 维护与反馈
 

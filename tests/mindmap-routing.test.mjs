@@ -23,7 +23,7 @@ function assertClear(route, cards, { width = 216, height = 96 } = {}) {
     for (let s = 0; s <= steps; s++) {
       const p = { x: a.x + (b.x - a.x) * s / steps, y: a.y + (b.y - a.y) * s / steps };
       for (const [id, card] of Object.entries(cards)) {
-        assert.ok(!(p.x > card.x + .001 && p.x < card.x + width - .001 && p.y > card.y + .001 && p.y < card.y + height - .001), `path passes through ${id} at ${JSON.stringify(p)}`);
+        assert.ok(!(p.x > card.x + .001 && p.x < card.x + (card.width ?? width) - .001 && p.y > card.y + .001 && p.y < card.y + (card.height ?? height) - .001), `path passes through ${id} at ${JSON.stringify(p)}`);
       }
       assert.ok(p.x >= route.bounds.left - 1 && p.x <= route.bounds.right + 1 && p.y >= route.bounds.top - 1 && p.y <= route.bounds.bottom + 1, 'bounds contain the visible path');
     }
@@ -39,6 +39,24 @@ test('unobstructed curved, bowed and crystal branches keep their existing geomet
   assert.equal(routes.route('a', 'b', { bow: 32 }).d, 'M 316 148 C 408 116, 408 116, 500 148');
   assert.equal(routes.route('a', 'b', { crystal: true }).d, 'M 316 148 L 396 148 L 420 148 L 500 148');
   assertClear(plain, positions);
+});
+
+test('straight and orthogonal styles attach to differently sized cards and avoid grown obstacles', () => {
+  const positions = { a: { x: 0, y: 100, width: 180, height: 150 }, b: { x: 700, y: 200, width: 320, height: 240 } };
+  const routes = router(positions);
+  const direct = routes.route('a', 'b', { lineStyle: 'straight', crystal: true, bow: 32 });
+  assert.match(direct.d, /^M [\d .-]+ L [\d .-]+$/);
+  assert.equal(direct.points[0].x, 180); assert.equal(direct.points.at(-1).x, 700);
+  assert.equal(direct.points[0].y, 175); assert.equal(direct.points.at(-1).y, 320);
+  assertClear(direct, positions);
+  const elbow = routes.route('a', 'b', { lineStyle: 'orthogonal', crystal: true });
+  assert.ok(elbow.points.slice(1).every((p, i) => p.x === elbow.points[i].x || p.y === elbow.points[i].y));
+  assertClear(elbow, positions);
+  const blocked = { ...positions, blocker: { x: 300, y: 0, width: 300, height: 600 } };
+  for (const lineStyle of ['curve', 'straight', 'orthogonal']) {
+    const route = router(blocked).route('a', 'b', { lineStyle });
+    assert.equal(route.rerouted, true); assertClear(route, blocked);
+  }
 });
 
 test('a card placed across a branch is routed around with room for its collapse button', () => {

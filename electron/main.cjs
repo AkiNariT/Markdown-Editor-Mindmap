@@ -463,6 +463,25 @@ if (ownsProfile) app.whenReady().then(async () => {
     await files.readDocument(target);
     return { path: path.resolve(target) };
   });
+  handle('mindmap-from-outline', async (id, content) => {
+    const record = documents.get(id);
+    if (!record || record.type === 'mindmap') throw new Error(t('请先打开 Markdown 文档。'));
+    if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 8 * 1024 * 1024) throw new Error(t('Markdown 内容必须是文本。'));
+    const { markdownToMindmap } = await import(pathToFileURL(path.join(root, 'src/mindmap-outline.mjs')).href);
+    const title = path.parse(record.path || record.suggestedName || t('文档大纲')).name;
+    const mapData = markdownToMindmap(content, { title, file: record.path || null });
+    setDocument({ type: 'mindmap', path: null, content: mindmap.serializeMindmap(mapData), mapData, fingerprint: null, suggestedName: title + '.mdmap', namedDraft: true }, true);
+    await persistSession(); return { ok: true };
+  });
+  handle('mindmap-export', async (id, content, options) => {
+    const record = documents.get(id);
+    if (record?.type !== 'mindmap') throw new Error(t('这个思维导图标签已关闭。'));
+    if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 8 * 1024 * 1024) throw new Error(t('思维导图内容无效或超过 8 MB。'));
+    const mapData = mindmap.parseMindmap(content);
+    const { exportMindmap } = require('./mindmap-export.cjs');
+    return exportMindmap(win, mapData, { format: options?.format, preset: options?.preset, scope: options?.scope,
+      defaultPath: path.join(record.path ? path.dirname(record.path) : app.getPath('documents'), path.parse(record.path || record.suggestedName || 'MD').name) });
+  });
   handle('mindmap-create-file', async (id, content, nodeId) => {
     const record = documents.get(id);
     if (record?.type !== 'mindmap') throw new Error(t('这个思维导图标签已关闭。'));

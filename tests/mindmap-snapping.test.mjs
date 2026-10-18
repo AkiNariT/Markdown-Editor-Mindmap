@@ -103,6 +103,19 @@ test('custom equal card sizes align both centers and matching edges', async () =
   assert.deepEqual(result, { dx: 180, dy: 40, guides: [{ axis: 'x', value: 250, start: 58, end: 362, targetId: 'b' }] });
 });
 
+test('unequal cards align matching left, center, right and top, center, bottom anchors', async () => {
+  const { createMindmapSnapper } = await load();
+  const points = new Map([['a', { x: 0, y: 0, width: 180, height: 96 }], ['b', { x: 300, y: 500, width: 320, height: 200 }]]);
+  const snapper = createMindmapSnapper(points, { anchorId: 'a' });
+  const centered = snapper.snap(367, 10);
+  assert.equal(centered.dx, 370); assert.equal(centered.guides[0].value, 460);
+  assert.equal(snapper.snap(437, 10).dx, 440);
+  assert.equal(snapper.snap(10, 549).dy, 552);
+  assert.equal(snapper.snap(10, 601).dy, 604);
+  assert.equal(snapper.snap(10, 497).dy, 500);
+  assert.equal(centered.guides[0].end, 712);
+});
+
 test('repeated pointer queries remain practical for a thousand-card map', async t => {
   const { createMindmapSnapper } = await load();
   const points = new Map([['a', { x: -500, y: -500 }]]);

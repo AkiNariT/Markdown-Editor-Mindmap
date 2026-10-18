@@ -81,13 +81,20 @@ function describe(d, points, rerouted, blocked = false) {
   return { d, points, rerouted, midpoint, bounds: boundsOf(points), ...(blocked ? { blocked: true } : {}) };
 }
 
-function legacyRoute(from, to, width, height, columnGap, bow, crystal) {
-  const dx = to.x - from.x, dy = to.y - from.y, horizontal = Math.abs(dx) > Math.abs(dy);
+function legacyRoute(from, to, columnGap, bow, crystal, lineStyle) {
+  const dx = to.x + to.width / 2 - from.x - from.width / 2, dy = to.y + to.height / 2 - from.y - from.height / 2, horizontal = Math.abs(dx) > Math.abs(dy);
   const direction = (horizontal ? dx : dy) >= 0 ? 1 : -1;
-  const a = horizontal ? { x: from.x + (direction > 0 ? width : 0), y: from.y + height / 2 }
-    : { x: from.x + width / 2, y: from.y + (direction > 0 ? height : 0) };
-  const b = horizontal ? { x: to.x + (direction > 0 ? 0 : width), y: to.y + height / 2 }
-    : { x: to.x + width / 2, y: to.y + (direction > 0 ? 0 : height) };
+  const a = horizontal ? { x: from.x + (direction > 0 ? from.width : 0), y: from.y + from.height / 2 }
+    : { x: from.x + from.width / 2, y: from.y + (direction > 0 ? from.height : 0) };
+  const b = horizontal ? { x: to.x + (direction > 0 ? 0 : to.width), y: to.y + to.height / 2 }
+    : { x: to.x + to.width / 2, y: to.y + (direction > 0 ? 0 : to.height) };
+  if (lineStyle === 'straight') return describe(`M ${a.x} ${a.y} L ${b.x} ${b.y}`, [a, b], false);
+  if (lineStyle === 'orthogonal') {
+    const middle = horizontal ? (a.x + b.x) / 2 : (a.y + b.y) / 2;
+    const points = simplify(horizontal ? [a, { x: middle, y: a.y }, { x: middle, y: b.y }, b]
+      : [a, { x: a.x, y: middle }, { x: b.x, y: middle }, b]);
+    return describe(points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' '), points, false);
+  }
   const gap = (horizontal ? b.x - a.x : b.y - a.y) * direction;
   const bend = gap >= 0 ? gap / 2 : Math.max(columnGap / 2, Math.abs(gap) / 2);
   if (crystal) {
@@ -157,7 +164,9 @@ export function createMindmapRouter(positions, {
   const cards = new Map();
   for (const [id, point] of positions) {
     if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
-    const card = { id, x: point.x, y: point.y, left: point.x, top: point.y, right: point.x + width, bottom: point.y + height };
+    const cardWidth = Number.isFinite(point.width) && point.width > 0 ? point.width : width;
+    const cardHeight = Number.isFinite(point.height) && point.height > 0 ? point.height : height;
+    const card = { id, x: point.x, y: point.y, width: cardWidth, height: cardHeight, left: point.x, top: point.y, right: point.x + cardWidth, bottom: point.y + cardHeight };
     cards.set(id, card);
   }
   const rectangles = [...cards.values()].map(card => ({ id: card.id, left: card.left - clearance, top: card.top - clearance, right: card.right + rightExtra + clearance, bottom: card.bottom + clearance }));
@@ -174,7 +183,7 @@ export function createMindmapRouter(positions, {
   const pathClear = points => points.slice(1).every((p, i) => segmentClear(points[i], p));
 
   function ports(card, preferred) {
-    const rect = expanded.get(card.id), mx = card.x + width / 2, my = card.y + height / 2;
+    const rect = expanded.get(card.id), mx = card.x + card.width / 2, my = card.y + card.height / 2;
     return [
       { point: { x: card.right, y: my }, stub: { x: rect.right, y: my }, direction: 0 },
       { point: { x: mx, y: card.bottom }, stub: { x: mx, y: rect.bottom }, direction: 1 },
@@ -315,10 +324,10 @@ export function createMindmapRouter(positions, {
   }
 
   return {
-    route(fromId, toId, { bow = 0, crystal = false } = {}) {
+    route(fromId, toId, { bow = 0, crystal = false, lineStyle = 'curve' } = {}) {
       const from = cards.get(fromId), to = cards.get(toId);
       if (!from || !to || fromId === toId) return null;
-      const original = legacyRoute(from, to, width, height, columnGap, bow, crystal);
+      const original = legacyRoute(from, to, columnGap, bow, crystal, lineStyle);
       const obstacles = [], seen = new Set();
       // Segment queries avoid checking every node inside a tall curve's entire
       // bounding box. A few blockers suffice to choose candidate detours; every

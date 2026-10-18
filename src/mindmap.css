@@ -1,6 +1,6 @@
 .mindmap-view{display:flex;flex-direction:column;flex:1;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;background:var(--bg);color:var(--text)}
 .mindmap-view [hidden]{display:none!important}
-.mindmap-toolbar{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));flex-shrink:0;gap:6px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--paper)}
+.mindmap-toolbar{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));flex-shrink:0;gap:6px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--paper)}
 .mindmap-readonly .mindmap-toolbar{display:flex;justify-content:flex-end;gap:6px;padding:6px 20px}
 .mindmap-readonly .mindmap-tool{height:30px;padding:4px 12px}
 .mindmap-tool{display:flex;align-items:center;justify-content:center;min-width:0;height:34px;padding:6px 3px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:12px;white-space:nowrap;cursor:pointer}
@@ -9,8 +9,8 @@
 .mindmap-view button:disabled{opacity:.38;cursor:default}
 .mindmap-editor-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;flex-shrink:0;min-width:0;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--paper)}
 .mindmap-text-label{display:flex;align-items:center;gap:12px;flex:1;min-width:150px;color:var(--muted);font-size:11px;white-space:nowrap}
-.mindmap-text-input{display:block;flex:1;min-width:0;width:100%;height:32px;padding:5px 9px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;outline:none}
-.mindmap-text-input[readonly]{border-color:transparent;background:transparent;cursor:default}
+.mindmap-text-input,.mindmap-note-input{display:block;flex:1;min-width:0;width:100%;height:32px;padding:5px 9px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;outline:none}
+.mindmap-text-input[readonly],.mindmap-note-input[readonly]{border-color:transparent;background:transparent;cursor:default}
 .mindmap-palette-controls{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0}
 .mindmap-palette-label{color:var(--muted);font-size:11px;margin-right:3px;white-space:nowrap}
 .mindmap-palette{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:27px;height:27px;padding:0;border:1px solid color-mix(in srgb,var(--swatch-color,var(--text)) 20%,var(--swatch-background,var(--paper)));border-radius:6px;background:var(--swatch-background,var(--paper));color:var(--swatch-color,var(--text));font:600 12px system-ui;cursor:pointer}
@@ -18,8 +18,8 @@
 .mindmap-palette:hover:not(:disabled){transform:translateY(-1px)}
 .mindmap-palette:disabled,.mindmap-theme-select:disabled{opacity:.38;cursor:default}
 .mindmap-style-label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;white-space:nowrap}
-.mindmap-theme-select{max-width:130px;height:29px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:12px}
-.mindmap-connection-editor{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:0;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--paper)}
+.mindmap-theme-select,.mindmap-choice{max-width:160px;height:29px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:12px}
+.mindmap-connection-editor{display:flex;align-items:center;flex-wrap:wrap;gap:10px;flex-shrink:0;min-width:0;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--paper)}
 .mindmap-connection-field{display:flex;align-items:center;gap:12px;min-width:0;flex:1;font-size:11px;color:var(--muted);white-space:nowrap}
 .mindmap-connection-input{flex:1;min-width:0;height:32px;padding:5px 9px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font:inherit;font-size:13px}
 .mindmap-connection-input[readonly]{border-color:transparent;background:transparent}
@@ -58,7 +58,13 @@
 .mindmap-locked .mindmap-canvas,.mindmap-locked .mindmap-connection-hit{cursor:default;pointer-events:none}
 .mindmap-node-button{display:flex;align-items:center;justify-content:flex-start;flex:1;width:100%;min-height:0;padding:8px 0 4px;border:0;border-radius:0;background:transparent;color:var(--text);font:inherit;font-size:13px;line-height:1.5;text-align:left;cursor:pointer;overflow:hidden}
 .mindmap-node-button:hover{background:transparent}
-.mindmap-node-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;white-space:pre-wrap}
+.mindmap-node-title{display:block;white-space:pre;line-height:23px;font-size:16px}
+.mindmap-node-subtitle{display:block;white-space:pre;line-height:19px;font-size:13px;margin-top:8px;opacity:.75;font-weight:400}
+.mindmap-map-settings{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mindmap-subtitle-input{resize:vertical;min-height:32px;max-height:80px}
+.mindmap-export-panel{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:10px 24px;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--paper)}
+.mindmap-export-confirm,.mindmap-export-cancel{padding:6px 12px;border:1px solid var(--border);border-radius:5px;background:var(--paper);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
+.mindmap-export-confirm{background:var(--text);color:var(--paper)}
 .mindmap-root .mindmap-node-title{font-weight:600}
 .mindmap-linked .mindmap-node-button{padding-right:22px}
 .mindmap-file{position:absolute;top:7px;right:7px;display:flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--muted);font:inherit;font-size:16px;line-height:1;cursor:pointer}
@@ -71,6 +77,6 @@
 .mindmap-menu-item{display:block;width:100%;flex-shrink:0;padding:7px 10px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit;text-align:left;white-space:nowrap;cursor:pointer}
 .mindmap-menu-item:hover:not(:disabled),.mindmap-menu-item:focus-visible{background:color-mix(in srgb,var(--text) 8%,transparent)}
 .dark .mindmap-view,.dark .mindmap-canvas{background:#000}
-@container document (max-width:860px){.mindmap-toolbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:8px 16px}.mindmap-editor-row{padding:8px 20px;gap:10px}}
-@media(max-width:950px){.mindmap-toolbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:8px 16px}.mindmap-editor-row{padding:8px 20px;gap:10px}}
-@media(max-width:520px){.mindmap-toolbar{padding:8px 10px}.mindmap-tool{font-size:11px}.mindmap-selection-detail{display:none}.mindmap-editor-row{padding:8px 14px}.mindmap-hint{font-size:9px;padding:6px 8px}}
+@container document (max-width:860px){.mindmap-toolbar{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:8px 16px}.mindmap-editor-row{padding:8px 20px;gap:10px}}
+@media(max-width:950px){.mindmap-toolbar{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:8px 16px}.mindmap-editor-row{padding:8px 20px;gap:10px}}
+@media(max-width:520px){.mindmap-toolbar{grid-template-columns:repeat(2,minmax(0,1fr));padding:8px 10px}.mindmap-tool{font-size:11px}.mindmap-selection-detail{display:none}.mindmap-editor-row{padding:8px 14px}.mindmap-hint{font-size:9px;padding:6px 8px}}

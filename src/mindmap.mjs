@@ -22,7 +22,9 @@ export function createMindmap() {
 
 export function validateMindmap(value) {
   if (!isRecord(value) || value.format !== 'md-mindmap') throw new Error(t('不是有效的 MD 思维导图文件。'));
-  if (![1, 2, 3, 4, 5].includes(value.version)) throw new Error(t('暂不支持这个思维导图版本。'));
+  if (![1, 2, 3, 4, 5, 6].includes(value.version)) throw new Error(t('暂不支持这个思维导图版本。'));
+  if (Object.hasOwn(value, 'lineStyle') && (value.version < 6 || !['curve', 'orthogonal', 'straight'].includes(value.lineStyle))) throw new Error(t('连线样式无效，需要使用第 6 版格式与支持的样式。'));
+  if (Object.hasOwn(value, 'nodeSize') && (value.version < 6 || !['compact', 'standard', 'wide'].includes(value.nodeSize))) throw new Error(t('节点尺寸无效，需要使用第 6 版格式与支持的尺寸。'));
   if (Object.hasOwn(value, 'theme') && (value.version < 5 || !mapThemes.includes(value.theme))) throw new Error(t('整图风格无效，需要使用第 5 版格式与支持的风格。'));
   if (value.version >= 2 && (!Array.isArray(value.connections) || value.connections.length > 2000)) throw new Error(t('思维导图连接数据无效，最多支持 2000 条关系线。'));
   if (value.version === 1 && Object.hasOwn(value, 'connections')) throw new Error(t('节点连接需要使用新版思维导图格式。'));
@@ -35,6 +37,10 @@ export function validateMindmap(value) {
     if (!validFile(item.file)) throw new Error(t('节点只能关联本地 .md 或 .markdown 文件，路径不能包含网址或控制字符。'));
     if (typeof item.collapsed !== 'boolean') throw new Error(t('节点折叠状态无效。'));
     const normalized = { id: item.id, parent: item.parent, text: item.text, file: item.file, collapsed: item.collapsed };
+    if (Object.hasOwn(item, 'subtitle')) {
+      if (value.version < 6 || typeof item.subtitle !== 'string' || item.subtitle.length > 500) throw new Error(t('节点副标题无效，需要使用第 6 版格式，且不超过 500 个字符。'));
+      normalized.subtitle = item.subtitle;
+    }
     if (Object.hasOwn(item, 'offset')) {
       if (value.version < 2 || !isRecord(item.offset) || ![item.offset.x, item.offset.y].every(number => typeof number === 'number' && Number.isFinite(number) && Math.abs(number) <= 100000)) throw new Error(t('节点位置无效，坐标须为 -100000 到 100000 之间的有限数值。'));
       normalized.offset = { x: item.offset.x, y: item.offset.y };
@@ -76,9 +82,21 @@ export function validateMindmap(value) {
       if (value.version < 4 || typeof edge.label !== 'string' || edge.label.length > 200 || controlCharacters.test(edge.label) || labelLineBreaks.test(edge.label)) throw new Error(t('关系线文字无效，需要使用第 4 版格式，且为不超过 200 个字符的单行文本。'));
       normalized.label = edge.label;
     }
+    if (Object.hasOwn(edge, 'style')) {
+      if (value.version < 6 || !['solid', 'dashed'].includes(edge.style)) throw new Error(t('关系线样式无效，需要使用第 6 版格式与支持的样式。'));
+      normalized.style = edge.style;
+    }
+    if (Object.hasOwn(edge, 'arrow')) {
+      if (value.version < 6 || !['none', 'end', 'both'].includes(edge.arrow)) throw new Error(t('关系线箭头无效，需要使用第 6 版格式与支持的箭头。'));
+      normalized.arrow = edge.arrow;
+    }
+    if (Object.hasOwn(edge, 'color')) {
+      if (value.version < 6 || typeof edge.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(edge.color)) throw new Error(t('关系线颜色无效，需要使用第 6 版格式与六位十六进制颜色。'));
+      normalized.color = edge.color.toLowerCase();
+    }
     ids.add(edge.id); pairs.add(pair); return normalized;
   });
-  return { format: 'md-mindmap', version: value.version, root: value.root, nodes, ...(value.version >= 2 ? { connections } : {}), ...(Object.hasOwn(value, 'theme') ? { theme: value.theme } : {}) };
+  return { format: 'md-mindmap', version: value.version, root: value.root, nodes, ...(value.version >= 2 ? { connections } : {}), ...(Object.hasOwn(value, 'theme') ? { theme: value.theme } : {}), ...(Object.hasOwn(value, 'lineStyle') ? { lineStyle: value.lineStyle } : {}), ...(Object.hasOwn(value, 'nodeSize') ? { nodeSize: value.nodeSize } : {}) };
 }
 
 export function parseMindmap(text) {

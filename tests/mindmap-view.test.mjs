@@ -59,14 +59,14 @@ test('reading exposes only relevant navigation controls and editing restores the
     const before = view.getText(), positions = data.nodes.map(item => point(view, item.id));
     view.setEditable(false);
     assert.equal(view.host.querySelector('.mindmap-editor-row').hidden, true);
-    assert.deepEqual(visibleTools(), ['居中']);
+    assert.deepEqual(visibleTools(), ['居中', '导出']);
     assert.match(view.host.querySelector('.mindmap-hint').textContent, /双击节点打开文件/);
     nodeButton(view, 'a').click();
-    assert.deepEqual(visibleTools(), ['打开文件', '居中']);
+    assert.deepEqual(visibleTools(), ['打开文件', '居中', '导出']);
     context(view, 'a'); assert.equal(menuAction(view, 'edit-map').disabled, false);
     view.setEditable(true);
     assert.equal(view.host.querySelector('.mindmap-editor-row').hidden, false);
-    assert.deepEqual(visibleTools(), ['子主题', '同级主题', '删除', '关联 Markdown', '打开文件', '取消关联', '折叠', '居中']);
+    assert.deepEqual(visibleTools(), ['子主题', '同级主题', '删除', '关联 Markdown', '打开文件', '取消关联', '折叠', '整理布局', '居中', '导出']);
     assert.equal(view.host.querySelector('[aria-label="节点文字"]').readOnly, false);
     assert.equal(view.host.querySelector('[data-palette=blue]').disabled, false);
     assert.match(view.host.querySelector('.mindmap-hint').textContent, /拖动节点靠近时对齐/);

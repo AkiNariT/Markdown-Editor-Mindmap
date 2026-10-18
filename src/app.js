@@ -144,7 +144,7 @@ function setInputPermissions() {
   if (state?.source) state.source.input.readOnly = !editing || working || closing;
   state?.map?.setLocked?.(working || closing);
   state?.map?.setEditable(editing);
-  for (const id of ['open', 'new', 'save', 'save-as', 'mode', 'skill-template', 'zoom-out', 'zoom-reset', 'zoom-in', 'rename', 'name-confirm', 'name-cancel', 'new-mindmap', 'settings', 'check-updates', 'settings-check-updates']) $(id).disabled = working || closing;
+  for (const id of ['open', 'new', 'save', 'save-as', 'mode', 'skill-template', 'zoom-out', 'zoom-reset', 'zoom-in', 'rename', 'name-confirm', 'name-cancel', 'new-mindmap', 'outline-to-mindmap', 'settings', 'check-updates', 'settings-check-updates']) $(id).disabled = working || closing;
   $('filename').readOnly = working || closing;
   for (const button of $('view-switch').querySelectorAll('button')) button.disabled = working || closing;
   $('sync-scroll').disabled = working || closing;
@@ -202,6 +202,12 @@ function createSession(value, mountEditor = false) {
         return unpack(await api.openMindmapFile(state.current.id, state.map.getText(), nodeId, options.created === true));
       }),
       onEdit: async () => { if (current?.id === state.current.id && !editing) await toggleMode(); },
+      onExport: async settings => action(async () => {
+        await checkpoint.flush();
+        const result = unpack(await api.exportMindmap(state.current.id, state.map.getText(), settings));
+        if (!result.canceled) toast(t('已导出 {count} 个文件。', { count: result.count }));
+        return result;
+      }),
       onError: message => toast(message, true),
     });
     state.host = state.map.host; state.baselineMap = state.map.getText(); return applyRecovery(state, value.recovery);
@@ -661,6 +667,12 @@ $('save').addEventListener('click', () => action(() => save()));
 $('save-as').addEventListener('click', () => { hideMenus(); action(() => save(true)); });
 $('mode').addEventListener('click', toggleMode);
 $('new-mindmap').addEventListener('click', () => action(async () => unpack(await api.newMindmap())));
+$('outline-to-mindmap').addEventListener('click', () => action(async () => {
+  if (isMindmap()) return;
+  await checkpoint.flush();
+  unpack(await api.mindmapFromOutline(current.id, content()));
+  toast(t('已按标题生成导图，原文档保留在标签中。'));
+}));
 $('skill-template').addEventListener('click', () => action(async () => unpack(await api.openTemplate())));
 for (const id of ['skill-name', 'skill-description']) $(id).addEventListener('input', () => { if (loaded) markVisualChange(sessions.get(current.id)); });
 $('view-switch').addEventListener('click', event => { const button = event.target.closest('[data-view]'); if (button) switchView(button.dataset.view); });

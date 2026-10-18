@@ -1,0 +1,46 @@
+name: Windows release startup
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  packaged-startup:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Verify release fuse configuration
+        run: node --test tests/package-fuses.test.mjs
+      - run: npm run build
+      - run: npm run package
+      - name: Build single-file executable
+        run: node scripts/package-portable.mjs
+      - name: Open both release formats with clean and polluted environments
+        shell: pwsh
+        run: |
+          $env:MOYE_EXE = (Resolve-Path '.packaged/MD-win32-x64/MD.exe').Path
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $env:MOYE_PORTABLE_EXE = (Resolve-Path ".packaged/portable/MD-Windows-x64-$version.exe").Path
+          node tests/packaged-startup.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Keep isolated startup logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-startup-evidence
+          path: |
+            .desktop-test/packaged-startup-*/*.log
+            .desktop-test/packaged-startup-*/*.png
+          include-hidden-files: true
+          if-no-files-found: ignore

@@ -1,4 +1,4 @@
-/* All variants keep the base 216 × 96 border box used by layout and connectors. */
+/* All variants share the measured border boxes used by layout and connectors. */
 .mindmap-node .mindmap-node-title{color:var(--mindmap-node-text,inherit)}
 .mindmap-node[data-node-background]{background:var(--mindmap-node-background);border-color:color-mix(in srgb,var(--mindmap-node-foreground) 35%,var(--mindmap-node-background))}
 .mindmap-node[data-node-background] .mindmap-node-button,.mindmap-node[data-node-background] .mindmap-file{color:var(--mindmap-node-foreground)}
@@ -37,3 +37,7 @@
 .mindmap-view[data-map-theme=crystal] .mindmap-branch{stroke-width:2;opacity:.8;stroke-linejoin:bevel}
 .mindmap-lines .mindmap-vine-leaf{fill:var(--map-paper);stroke:var(--map-accent);stroke-width:1.2;opacity:1}
 .mindmap-view:is([data-map-theme=tree],[data-map-theme=vine],[data-map-theme=crystal]) .mindmap-connection{stroke:var(--map-ink)}
+.mindmap-view .mindmap-node{padding:var(--node-padding-y,18px) var(--node-padding-x,32px)}
+.mindmap-view .mindmap-node-button{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:0;overflow:visible;flex-shrink:0;font-size:16px;line-height:23px}
+.mindmap-view .mindmap-linked .mindmap-node-button{padding-right:22px}
+.mindmap-view .mindmap-fold{top:calc(50% - 12px)}

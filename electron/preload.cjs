@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('moye', {
   openDropped: file => invoke('drop', webUtils.getPathForFile(file)),
   newDocument: () => invoke('new'), save: (content, as, sourceSafe = false) => invoke('save', content, Boolean(as), Boolean(sourceSafe)),
   newMindmap: () => invoke('new-mindmap'),
+  mindmapFromOutline: (id, content) => invoke('mindmap-from-outline', id, content),
+  exportMindmap: (id, content, options) => invoke('mindmap-export', id, content, options),
   chooseMindmapFile: () => invoke('mindmap-choose-file'),
   createMindmapFile: (id, content, nodeId) => invoke('mindmap-create-file', id, content, nodeId),
   openMindmapFile: (id, content, nodeId, created = false) => invoke('mindmap-open-file', id, content, nodeId, Boolean(created)),

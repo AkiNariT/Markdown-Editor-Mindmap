@@ -130,3 +130,4 @@ html[lang=en] .aside-heading,html[lang=en] .page-bar{letter-spacing:.3px}
 html[lang=en] .text-button,html[lang=en] .mode-button{white-space:nowrap}
 @media(max-width:950px){html[lang=en] .topbar{gap:10px}html[lang=en] .document-label{max-width:140px}}
 @media(max-width:760px){html[lang=en] .topbar{gap:4px}html[lang=en] .text-button{padding:0 6px}html[lang=en] .mode-button{padding:8px}html[lang=en] .view-switch button{padding:0 8px}html[lang=en] .document-label{min-width:40px;max-width:95px}html[lang=en] footer{gap:8px}}
+.outline-to-mindmap{font-size:11px;letter-spacing:0;color:var(--muted);padding:6px 10px;border:1px solid var(--border);border-radius:5px;white-space:nowrap}.outline-to-mindmap:hover{color:var(--text);background:var(--hover)}
