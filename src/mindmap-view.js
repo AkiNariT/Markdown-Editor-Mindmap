@@ -475,8 +475,12 @@ export function createMindmapView(initialData, options = {}) {
     dimensions = { width: layout.bounds.right + shift.x + layoutPadding.x, height: layout.bounds.bottom + shift.y + layoutPadding.y };
     return layout.children;
   }
-  function sizeStage() {
+  function sizeStage(viewport = { left: canvas.scrollLeft, top: canvas.scrollTop }) {
     const scale = zoom / 100;
+    // Keep enough scroll range for the current (or pending) viewport, including
+    // when a collapsed map is smaller than the window.
+    dimensions.width = Math.max(dimensions.width, (viewport.left + canvas.clientWidth) / scale);
+    dimensions.height = Math.max(dimensions.height, (viewport.top + canvas.clientHeight) / scale);
     world.style.width = `${dimensions.width}px`; world.style.height = `${dimensions.height}px`;
     world.style.transform = `scale(${scale})`;
     stage.style.width = `${dimensions.width * scale}px`; stage.style.height = `${dimensions.height * scale}px`;
@@ -636,7 +640,20 @@ export function createMindmapView(initialData, options = {}) {
     sizeStage();
   }
   function previewLayout() {
-    measureTree(); sizeStage(); renderLines();
+    measureTree();
+    const viewport = drag?.kind === 'node' ? {
+      left: drag.originScroll.left + (layoutPadding.x - drag.originPadding.x) * zoom / 100,
+      top: drag.originScroll.top + (layoutPadding.y - drag.originPadding.y) * zoom / 100,
+    } : undefined;
+    sizeStage(viewport); renderLines();
+    if (viewport) {
+      // A branch can extend beyond the original top/left canvas edge. Move the
+      // viewport by the added padding so nodes still follow the pointer and
+      // stationary cards do not jump. Use the gesture origin so fractional
+      // display-scale rounding does not accumulate across pointer events.
+      canvas.scrollLeft = viewport.left; canvas.scrollTop = viewport.top;
+      capturePosition();
+    }
     for (const [id, elements] of nodeElements) {
       const position = positions.get(id);
       elements.card.style.left = `${position.x}px`; elements.card.style.top = `${position.y}px`;
@@ -861,14 +878,15 @@ export function createMindmapView(initialData, options = {}) {
         return true;
       }));
       const branchIds = new Set([...nodeIds].flatMap(id => [...descendants(id)]));
-      const visible = [...positions].filter(([id]) => branchIds.has(id)).map(([, point]) => point);
       const offsets = new Map([...nodeIds].map(id => [id, { x: node(id).offset?.x || 0, y: node(id).offset?.y || 0 }]));
       const stored = [...offsets.values()];
       drag = { kind: 'node', id: event.pointerId, nodeIds, offsets, x: event.clientX, y: event.clientY, dx: 0, dy: 0, rawDx: 0, rawDy: 0, moved: false,
+        originPadding: { ...layoutPadding },
+        originScroll: { left: canvas.scrollLeft, top: canvas.scrollTop },
         snapper: createMindmapSnapper(positions, { anchorId: nodeId, movingIds: branchIds, width: NODE_WIDTH, height: NODE_HEIGHT }),
         bounds: {
-          minDx: Math.max(24 - Math.min(...visible.map(point => point.x)), ...stored.map(point => -100000 - point.x)),
-          minDy: Math.max(24 - Math.min(...visible.map(point => point.y)), ...stored.map(point => -100000 - point.y)),
+          minDx: Math.max(...stored.map(point => -100000 - point.x)),
+          minDy: Math.max(...stored.map(point => -100000 - point.y)),
           maxDx: Math.min(...stored.map(point => 100000 - point.x)), maxDy: Math.min(...stored.map(point => 100000 - point.y)),
         },
       };
@@ -883,6 +901,9 @@ export function createMindmapView(initialData, options = {}) {
   });
   canvas.addEventListener('pointermove', event => {
     if (!drag || drag.id !== event.pointerId) return;
+    // Hover events may arrive between held-button updates; they must never
+    // reposition a node or pan the canvas as if the mouse were still pressed.
+    if (event.pointerType === 'mouse' && !(event.buttons & 1)) return;
     if (drag.kind === 'pan') {
       canvas.scrollLeft = drag.left - event.clientX + drag.x; canvas.scrollTop = drag.top - event.clientY + drag.y; capturePosition(); return;
     }
@@ -899,12 +920,13 @@ export function createMindmapView(initialData, options = {}) {
     drag.dx = snapped.dx; drag.dy = snapped.dy;
     host.classList.add('mindmap-dragging'); previewLayout();
     guides.replaceChildren();
+    const shiftX = layoutPadding.x - drag.originPadding.x, shiftY = layoutPadding.y - drag.originPadding.y;
     for (const guide of snapped.guides) {
       const line = document.createElementNS(guides.namespaceURI, 'line');
       line.dataset.guideAxis = guide.axis;
       const vertical = guide.axis === 'x';
-      line.setAttribute('x1', vertical ? guide.value : guide.start); line.setAttribute('y1', vertical ? guide.start : guide.value);
-      line.setAttribute('x2', vertical ? guide.value : guide.end); line.setAttribute('y2', vertical ? guide.end : guide.value);
+      line.setAttribute('x1', (vertical ? guide.value : guide.start) + shiftX); line.setAttribute('y1', (vertical ? guide.start : guide.value) + shiftY);
+      line.setAttribute('x2', (vertical ? guide.value : guide.end) + shiftX); line.setAttribute('y2', (vertical ? guide.end : guide.value) + shiftY);
       guides.append(line);
     }
   }

@@ -59,6 +59,39 @@ test('straight and orthogonal styles attach to differently sized cards and avoid
   }
 });
 
+test('orthogonal siblings in one column share a trunk even when their vertical distance exceeds the column gap', () => {
+  // A tall root and eight collapsed siblings reproduce a course map. Previously
+  // near siblings used the card midpoint while distant ones used a different
+  // midpoint after obstacle avoidance, producing two parallel vertical trunks.
+  for (const mirror of [false, true]) {
+    const positions = { root: { x: 0, y: 404, width: 216, height: 128 } };
+    for (let index = 0; index < 8; index++) positions[`n${index}`] = { x: 292, y: index * 120, width: 216, height: 96 };
+    if (mirror) for (const card of Object.values(positions)) card.x = -card.x - card.width;
+    const routes = router(positions), trunks = new Set();
+    for (let index = 0; index < 8; index++) {
+      const result = routes.route('root', `n${index}`, { lineStyle: 'orthogonal' });
+      assertClear(result, positions);
+      assert.equal(result.points[0].x, mirror ? positions.root.x : positions.root.x + positions.root.width, 'branches leave the same root side');
+      assert.equal(result.points.at(-1).x, mirror ? positions[`n${index}`].x + 216 : positions[`n${index}`].x, 'branches enter each sibling from its facing side');
+      const vertical = result.points.slice(1).filter((point, i) => point.x === result.points[i].x && point.y !== result.points[i].y);
+      assert.equal(vertical.length, 1, 'an empty column needs only one vertical trunk');
+      trunks.add(vertical[0].x);
+    }
+    assert.equal(trunks.size, 1, 'aligned siblings must not create parallel, offset trunks');
+  }
+});
+
+test('orthogonal corridor preference still avoids a card placed on the shared trunk', () => {
+  const positions = {
+    root: { x: 0, y: 404, width: 216, height: 128 },
+    near: { x: 292, y: 360 }, far: { x: 292, y: 0 },
+    obstacle: { x: 240, y: 180, width: 40, height: 96 },
+  };
+  const routes = router(positions);
+  assertClear(routes.route('root', 'near', { lineStyle: 'orthogonal' }), positions);
+  assertClear(routes.route('root', 'far', { lineStyle: 'orthogonal' }), positions);
+});
+
 test('a card placed across a branch is routed around with room for its collapse button', () => {
   const positions = { a: { x: 0, y: 100 }, b: { x: 700, y: 100 }, obstacle: { x: 350, y: 70 } };
   for (const style of [{}, { bow: 32 }, { crystal: true }]) {
@@ -79,7 +112,7 @@ test('reverse and vertical connections avoid middle cards and their own endpoint
     { a: { x: 100, y: 100 }, b: { x: 250, y: 210 } },
     { a: { x: 100, y: 100 }, b: { x: 250, y: -10 } },
   ];
-  for (const positions of fixtures) for (const style of [{}, { bow: 32 }, { crystal: true }]) assertClear(router(positions).route('a', 'b', style), positions);
+  for (const positions of fixtures) for (const style of [{}, { bow: 32 }, { crystal: true }, { lineStyle: 'orthogonal' }]) assertClear(router(positions).route('a', 'b', style), positions);
 });
 
 test('several staggered obstacles and nearly touching cards have an exterior route', () => {

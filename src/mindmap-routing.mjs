@@ -328,6 +328,15 @@ export function createMindmapRouter(positions, {
       const from = cards.get(fromId), to = cards.get(toId);
       if (!from || !to || fromId === toId) return null;
       const original = legacyRoute(from, to, columnGap, bow, crystal, lineStyle);
+      let starts, ends;
+      if (lineStyle === 'orthogonal') {
+        // Use the same free-column midpoint for near and distant siblings.
+        // Choosing a dominant axis first made distant branches switch ports,
+        // then pick a different midpoint only after obstacle avoidance.
+        starts = ports(from, original.points[0]); ends = ports(to, original.points.at(-1));
+        const points = corridorRoute(from, to, starts, ends);
+        if (points) return describe(points.map((point, i) => `${i ? 'L' : 'M'} ${point.x} ${point.y}`).join(' '), points, false);
+      }
       const obstacles = [], seen = new Set();
       // Segment queries avoid checking every node inside a tall curve's entire
       // bounding box. A few blockers suffice to choose candidate detours; every
@@ -341,7 +350,7 @@ export function createMindmapRouter(positions, {
         }
       }
       if (!obstacles.length) return original;
-      const starts = ports(from, original.points[0]), ends = ports(to, original.points.at(-1));
+      starts ||= ports(from, original.points[0]); ends ||= ports(to, original.points.at(-1));
       const surrounding = [expanded.get(fromId), expanded.get(toId), ...obstacles];
       const envelope = {
         left: Math.min(...surrounding.map(r => r.left)), top: Math.min(...surrounding.map(r => r.top)),

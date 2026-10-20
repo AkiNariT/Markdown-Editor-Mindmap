@@ -63,6 +63,21 @@ test('relationships retain requested arrows, color, line style and safe labels',
   assert.ok(doc.documentElement.textContent.includes('<说明>'));
 });
 
+test('orthogonal exported siblings preserve the single aligned trunk used by the canvas', () => {
+  const data = map([node('root', null, '课程\n三天\n六单元\n完成作品'), ...Array.from({ length: 8 }, (_, index) => node(`n${index}`, 'root'))], { lineStyle: 'orthogonal' });
+  const doc = xml(buildMindmapExportPages(data).pages[0]);
+  const routes = createMindmapRouter(layoutMindmap(data).positions), trunks = new Set();
+  for (const branch of doc.querySelectorAll('[data-branch]')) {
+    const route = routes.route('root', branch.getAttribute('data-branch'), { lineStyle: 'orthogonal' });
+    assert.equal(branch.getAttribute('d'), route.d, 'all export formats use the same path as the canvas');
+    for (let i = 1; i < route.points.length; i++) {
+      if (route.points[i].x === route.points[i - 1].x && route.points[i].y !== route.points[i - 1].y) trunks.add(route.points[i].x);
+    }
+  }
+  assert.equal(doc.querySelectorAll('[data-branch]').length, 8);
+  assert.equal(trunks.size, 1, 'export must not restore the two offset trunks');
+});
+
 test('natural export includes negative manual offsets and rejects unsupported choices', () => {
   const data = map([node('root', null), node('child', 'root', '子主题', { offset: { x: -1000, y: -800 } })]);
   const page = buildMindmapExportPages(data).pages[0];

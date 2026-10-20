@@ -11,11 +11,15 @@ const node = (v, id) => v.host.querySelector(`[data-node-id="${id}"]`);
 const canvas = v => v.host.querySelector('.mindmap-canvas');
 const click = (v, id, modifiers = {}) => node(v, id).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, ...modifiers }));
 const points = v => Object.fromEntries([...v.host.querySelectorAll('[data-node-card]')].map(el => [el.dataset.nodeCard, { x: parseFloat(el.style.left), y: parseFloat(el.style.top) }]));
+const viewportPoints = v => Object.fromEntries(Object.entries(points(v)).map(([id, point]) => [id, {
+  x: point.x * v.getZoom() / 100 - canvas(v).scrollLeft,
+  y: point.y * v.getZoom() / 100 - canvas(v).scrollTop,
+}]));
 const selected = v => [...v.host.querySelectorAll('.mindmap-selected')].map(el => el.dataset.nodeCard).sort();
 const guides = v => [...v.host.querySelectorAll('.mindmap-guides [data-guide-axis]')];
 function pointer(target, type, x, y, modifiers = {}) {
-  const event = new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y, ...modifiers });
-  Object.defineProperty(event, 'pointerId', { value: 1 }); target.dispatchEvent(event);
+  const event = new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y, ...modifiers });
+  Object.defineProperties(event, { pointerId: { value: 1 }, pointerType: { value: 'mouse' } }); target.dispatchEvent(event);
 }
 const start = (v, id = 'a') => pointer(node(v, id), 'pointerdown', 200, 200);
 const move = (v, dx, dy, modifiers) => pointer(canvas(v), 'pointermove', 200 + dx, 200 + dy, modifiers);
@@ -109,5 +113,136 @@ test('loaded negative offsets keep stationary nodes and guides fixed through dra
     assert.equal(Number(line.getAttribute('x1')), aligned.a.x + 108);
     up(v); assert.deepEqual(points(v), aligned); v.undo(); assert.deepEqual(points(v), before);
     v.redo(); assert.deepEqual(points(v), aligned); assert.deepEqual(f.errors, []);
+  } finally { f.close(); }
+});
+
+test('a large root keeps following the pointer after its first child reaches the canvas boundary', () => {
+  const data = { format: 'md-mindmap', version: 2, root: 'root', connections: [], nodes: [
+    { ...n('root', null, { x: -800, y: -500 }), text: 'Course overview\nThree days\nSix units\nFinal project' },
+    ...Array.from({ length: 6 }, (_, i) => n(`unit-${i}`, 'root')),
+  ] };
+  const f = setup(data), v = f.view;
+  try {
+    const before = viewportPoints(v), original = v.getText();
+    assert.equal(points(v)['unit-0'].y, 24, 'the first child, rather than the root, touches the top edge');
+    assert.ok(points(v).root.y > 200);
+    start(v, 'root'); move(v, -70, -60);
+    for (const [id, point] of Object.entries(before)) assert.deepEqual(viewportPoints(v)[id], { x: point.x - 70, y: point.y - 60 }, id);
+    assert.equal(v.getText(), original, 'a preview does not mutate the document');
+    up(v); assert.deepEqual(v.getData().nodes[0].offset, { x: -870, y: -560 });
+    assert.equal(f.changes(), 1); const moved = viewportPoints(v);
+    v.undo(); assert.deepEqual(viewportPoints(v), before); v.redo(); assert.deepEqual(viewportPoints(v), moved);
+    const reopened = setup(JSON.parse(v.getText()));
+    try { assert.deepEqual(reopened.view.getData(), v.getData()); } finally { reopened.close(); }
+    assert.deepEqual(f.errors, []);
+  } finally { f.close(); }
+});
+
+test('extending the canvas keeps stationary cards and snap guides fixed and Escape restores the viewport', () => {
+  const data = fixture(); data.nodes.find(item => item.id === 'a').offset = { x: -800, y: -500 };
+  const f = setup(data), v = f.view;
+  try {
+    v.setZoom(150);
+    const before = viewportPoints(v), original = v.getText();
+    start(v); move(v, -75, -60, { altKey: true });
+    const preview = viewportPoints(v);
+    for (const id of ['a', 'child']) assert.deepEqual(preview[id], { x: before[id].x - 75, y: before[id].y - 60 }, id);
+    for (const id of ['root', 'b', 'c']) assert.deepEqual(preview[id], before[id], id);
+    move(v, before.root.x - before.a.x - 3, 30);
+    assert.equal(viewportPoints(v).a.x, before.root.x);
+    assert.deepEqual(viewportPoints(v).root, before.root);
+    const line = guides(v).find(item => item.dataset.guideAxis === 'x');
+    assert.ok(line, 'alignment remains available after growing the canvas');
+    assert.equal(Number(line.getAttribute('x1')), points(v).root.x + 108);
+    key('Escape');
+    assert.deepEqual(viewportPoints(v), before); assert.equal(v.getText(), original);
+    assert.equal(guides(v).length, 0); assert.equal(f.changes(), 0); assert.deepEqual(f.errors, []);
+  } finally { f.close(); }
+});
+
+test('a selected group crosses the canvas edge together without moving a selected descendant twice', () => {
+  const data = fixture(); data.nodes.find(item => item.id === 'a').offset = { x: -800, y: -500 };
+  const f = setup(data), v = f.view;
+  try {
+    click(v, 'a'); click(v, 'child', { ctrlKey: true }); click(v, 'b', { shiftKey: true });
+    const before = viewportPoints(v); start(v, 'child'); move(v, -50, -40, { altKey: true }); up(v);
+    for (const id of ['a', 'child', 'b']) assert.deepEqual(viewportPoints(v)[id], { x: before[id].x - 50, y: before[id].y - 40 }, id);
+    for (const id of ['root', 'c']) assert.deepEqual(viewportPoints(v)[id], before[id], id);
+    assert.equal(v.getData().nodes.find(item => item.id === 'child').offset, undefined);
+    assert.deepEqual(selected(v), ['a', 'b', 'child']); assert.equal(f.changes(), 1);
+    v.undo(); assert.deepEqual(viewportPoints(v), before); assert.deepEqual(f.errors, []);
+  } finally { f.close(); }
+});
+
+test('a map smaller than the viewport has room to compensate scrolling during and after a boundary drag', () => {
+  const data = { format: 'md-mindmap', version: 2, root: 'root', connections: [], nodes: [n('root', null, { x: -800, y: -500 })] };
+  const f = setup(data), v = f.view;
+  try {
+    const viewport = canvas(v), stage = v.host.querySelector('.mindmap-stage');
+    // jsdom has no layout or bounded scrolling. Model the browser's scroll
+    // range here so an undersized stage cannot hide a viewport jump.
+    for (const [axis, size, extent] of [['Left', 'Width', 1200], ['Top', 'Height', 1000]]) {
+      let position = 0;
+      Object.defineProperty(viewport, `client${size}`, { configurable: true, get: () => extent });
+      Object.defineProperty(viewport, `scroll${axis}`, {
+        configurable: true,
+        get: () => position = Math.max(0, Math.min(position, parseFloat(stage.style[size.toLowerCase()]) - extent)),
+        set: value => { position = Math.max(0, Math.min(value, parseFloat(stage.style[size.toLowerCase()]) - extent)); },
+      });
+    }
+    v.restoreSessionState({ layoutPadding: v.captureSessionState().layoutPadding, position: { left: 0, top: 0 } });
+    const before = viewportPoints(v);
+    start(v, 'root'); move(v, -70, -60);
+    const expected = { root: { x: before.root.x - 70, y: before.root.y - 60 } };
+    assert.deepEqual(viewportPoints(v), expected, 'the preview must follow the pointer');
+    up(v); assert.deepEqual(viewportPoints(v), expected, 'committing must not shrink away the needed scroll range');
+    v.undo(); assert.deepEqual(viewportPoints(v), before); v.redo(); assert.deepEqual(viewportPoints(v), expected);
+  } finally { f.close(); }
+});
+
+test('fractional display scaling does not accumulate scroll rounding across a boundary drag', () => {
+  const data = fixture(); data.nodes.find(item => item.id === 'a').offset = { x: -800, y: -500 };
+  const f = setup(data), v = f.view;
+  try {
+    const viewport = canvas(v);
+    for (const axis of ['Left', 'Top']) {
+      let position = 0;
+      Object.defineProperty(viewport, `scroll${axis}`, {
+        configurable: true, get: () => position,
+        set: value => { position = Math.round(value * 1.25) / 1.25; },
+      });
+    }
+    const before = viewportPoints(v); start(v);
+    for (let step = 1; step <= 8; step++) move(v, -70 * step / 8, -60 * step / 8, { altKey: true });
+    up(v);
+    const moved = viewportPoints(v);
+    for (const id of ['a', 'child']) {
+      assert.ok(Math.abs(moved[id].x - before[id].x + 70) <= .41, `${id} horizontal rounding is at most half a device pixel`);
+      assert.ok(Math.abs(moved[id].y - before[id].y + 60) <= .41, `${id} vertical rounding is at most half a device pixel`);
+    }
+  } finally { f.close(); }
+});
+
+test('mouse hover events cannot jump a node or pan the canvas during an active drag', () => {
+  const f = setup(), v = f.view;
+  try {
+    const before = viewportPoints(v);
+    start(v, 'root'); move(v, 40, 25);
+    const preview = viewportPoints(v);
+    move(v, 950, 600, { buttons: 0 });
+    assert.deepEqual(viewportPoints(v), preview, 'unpressed mouse movement is not a drag update');
+    move(v, 80, 50); up(v);
+    assert.deepEqual(viewportPoints(v).root, { x: before.root.x + 80, y: before.root.y + 50 });
+    assert.deepEqual(v.getData().nodes[0].offset, { x: 80, y: 50 });
+    assert.equal(f.changes(), 1);
+
+    const viewport = canvas(v); viewport.scrollLeft = 300; viewport.scrollTop = 200;
+    pointer(viewport, 'pointerdown', 200, 200); move(v, 50, 20);
+    assert.deepEqual({ x: viewport.scrollLeft, y: viewport.scrollTop }, { x: 250, y: 180 });
+    move(v, 950, 600, { buttons: 0 });
+    assert.deepEqual({ x: viewport.scrollLeft, y: viewport.scrollTop }, { x: 250, y: 180 });
+    move(v, 80, 50); up(v);
+    assert.deepEqual({ x: viewport.scrollLeft, y: viewport.scrollTop }, { x: 220, y: 150 });
+    assert.equal(f.changes(), 1); assert.deepEqual(f.errors, []);
   } finally { f.close(); }
 });

@@ -79,6 +79,9 @@ async function smoke(executable, kind, scenario, directory, fixture) {
     const appInfo = await page.evaluate(() => window.moye.getAppInfo());
     evidence.version = appInfo.version;
     assert.equal(appInfo.version, process.env.MOYE_STARTUP_EXPECT_VERSION || require('../package.json').version, 'The actual release version must match the package under test.');
+    // A visible window can be occluded by another app while this shared desktop
+    // test runs. Request a foreground frame before taking its evidence image.
+    await page.bringToFront();
     await page.screenshot({ path: path.join(directory, `${kind}-${scenario}.png`) });
     console.log(`PASS ${kind}/${scenario}: window, document, userData; version ${appInfo.version}`);
   } catch (error) {

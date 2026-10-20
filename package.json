@@ -1,7 +1,7 @@
 {
   "name": "moye",
   "productName": "MD",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "description": "极简 Markdown 阅读与可视化编辑器",
   "main": "electron/main.cjs",
   "type": "module",
@@ -25,6 +25,7 @@
     "test:mindmap": "node tests/mindmap.cjs",
     "test:mindmap-interaction": "node tests/mindmap-interaction.cjs",
     "test:mindmap-alignment": "node tests/mindmap-alignment.cjs",
+    "test:mindmap-boundary": "node tests/mindmap-boundary.cjs",
     "test:mindmap-style": "node tests/mindmap-style.cjs",
     "test:mindmap-open": "node tests/mindmap-open.cjs",
     "test:recovery": "node tests/recovery.electron.cjs",

@@ -1,22 +1,22 @@
-Markdown-Editor-Mindmap（Markdown 可视化编辑与思维导图）0.1.29 公开预览版
+Markdown-Editor-Mindmap（Markdown 可视化编辑与思维导图）0.1.30 公开预览版
 
-推荐下载单文件 MD-Windows-x64-0.1.29.exe；也提供完整文件夹 ZIP、源码和独立 SKILL 模板。
+推荐下载：MD-Windows-x64-0.1.30.exe。发布页：https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30
 
-本轮新增：导图连线样式、节点宽度、完整长标题、备注、关系线箭头与配色；“整理布局”可撤销地重排；“导出”提供 SVG / PNG / PDF、16:9 / 16:10 / A4 横向与总览加分章；Markdown 页面的“标题转导图”保留原文档。新属性使用 v6 格式，需要 0.1.29 或更新程序，旧 v1 至 v5 导图仍可读取。发布构建同时加固外部 Node 环境变量影响下的启动行为。
+本轮修复：主节点、分支和多选节点在画布上边、左边的拖动限制；同一列节点直角连线的转折位置不一致。拖动时画布自动扩展，子节点继续跟随；保留撤销、重做、保存及连线避障。导出使用相同的连线路由。忽略未按下鼠标键的悬停事件，避免误触发拖动。仍支持 0.1.29 的完整标题、备注、节点宽度、关系线设置和 SVG / PNG / PDF 导出。
 
-推荐单文件版：将“MD-Windows-x64-0.1.29.exe”复制到桌面或其他常用位置，双击即可运行，也可以改名。无需安装、管理员权限或额外下载运行环境。首次启动在 %LOCALAPPDATA%\MD\Runtime 中准备运行缓存，后续启动复用完整缓存；缺失或截断的缓存会自动准备新副本。看到“正在打开 MD”时请等待，耗时取决于磁盘与系统负载。缓存只包含运行文件，个人文档和草稿仍单独保存。
+推荐单文件版：将“MD-Windows-x64-0.1.30.exe”复制到桌面或其他常用位置，双击即可运行，也可以改名。无需安装、管理员权限或额外下载运行环境。首次启动在 %LOCALAPPDATA%\MD\Runtime 中准备运行缓存，后续启动复用完整缓存；缺失或截断的缓存会自动准备新副本。看到“正在打开 MD”时请等待，耗时取决于磁盘与系统负载。缓存只包含运行文件，个人文档和草稿仍单独保存。
 单文件约 338 MB，直接内嵌未压缩运行文件，减少首次准备步骤；不承诺首次启动在 2 秒内完成。缓存不会随退出删除，新版本和修复会保留旧副本以免影响正在运行的实例。需要清理时，先保存文档并退出所有 MD 实例，再删除 %LOCALAPPDATA%\MD\Runtime；下次启动会重新准备运行文件。
 文件夹 ZIP 版：解压整个 ZIP 后双击其中的“MD.exe”。这个 MD.exe 需要同目录内的 DLL、resources 等配套文件，请保留完整文件夹，不能单独复制它。
 更新版本时，保存需要保留的修改并正常退出旧版，再打开新版；同一用户配置只运行一个实例。文件夹版请将新版完整解压到独立目录。已有本机恢复记录仍可读取。
 设置与草稿保存在当前 Windows 用户的 %APPDATA%\MD（可用 --user-data-dir 指定其他目录）。复制程序不会带走这些个人数据；文档仍需保存到自己的文件夹。
 适用目标：Windows 10 / Windows 11 的 64 位 x64 系统。这是一份便携构建，不需要安装 Node.js 或开发工具。
-0.1.29 是未签名的公开预览版。发布页提供六个附件：单文件 EXE、完整文件夹 ZIP、源码 ZIP、SKILL.md、SKILL.en.md 和 SHA256SUMS.txt：https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.29
+0.1.30 是未签名的公开预览版。发布页提供六个附件：单文件 EXE、完整文件夹 ZIP、源码 ZIP、SKILL.md、SKILL.en.md 和 SHA256SUMS.txt：https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30
 
 检查更新
 右上角“更多操作”（…）→ 检查更新，或“设置”→ 检查更新，打开更新弹窗后点击检查。应用读取固定的官方仓库 AkiNariT/Markdown-Editor-Mindmap 的公开 GitHub 发布信息，包括公开预览版，显示当前版本、最新兼容 Windows x64 版本和纯文本更新说明。点击发布页按钮会在外部浏览器打开已核对的官方版本页面，再自行下载便携包。
 应用不会在后台自动检查，也不会自动下载、安装或重启。关闭弹窗后可继续编辑和保存；网络不可用或检查失败不影响关闭弹窗后的正常使用。
-手动检查会连接 api.github.com，GitHub 可接收 IP 地址和正常请求元数据；不会发送文档、文件路径、草稿或账户令牌。文档中的远程图片仍按原有方式访问图片服务器，浏览器下载属于外部应用的网络行为。隐私说明：https://github.com/AkiNariT/Markdown-Editor-Mindmap/blob/v0.1.29/PRIVACY.md
-当前公开版 0.1.29 发布页：https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.29
+手动检查会连接 api.github.com，GitHub 可接收 IP 地址和正常请求元数据；不会发送文档、文件路径、草稿或账户令牌。文档中的远程图片仍按原有方式访问图片服务器，浏览器下载属于外部应用的网络行为。隐私说明：https://github.com/AkiNariT/Markdown-Editor-Mindmap/blob/v0.1.30/PRIVACY.md
+当前公开版 0.1.30 发布页：https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30
 
 Windows 使用
 窗口会记住普通大小、位置与最大化状态；重开时按当前屏幕可用区域校正。系统缩放使用 Electron 的设备独立坐标，文档 Ctrl+滚轮缩放仍单独保留。连续从资源管理器打开文件时会排队处理，重复文件复用已有标签。
@@ -30,6 +30,8 @@ Windows 使用
 右上角“更多操作”（…）→ 设置 → 语言，可选简体中文或 English。切换立即生效，重启后保留；已有文档、节点文字和未保存内容保持原样。英文界面新建的欢迎文档与 SKILL 模板使用英文。English guide: README.en.txt。
 
 本次导图更新
+画布边界：主节点、分支或多选组拖过原画布左边、上边时，画布自动扩展，子节点继续跟随；支持撤销、重做与保存。
+直角连线：无障碍的同一列间通道采用统一转折位置，遇到其他节点时仍会绕行；导出使用相同路由。
 连线与节点：编辑导图时，“连线”可选曲线、直角或直线；遇到其他节点仍尽量绕行。“节点宽度”可选紧凑、标准、宽松，长标题完整换行并自动增高；选中节点可在“备注”输入多行说明。
 关系线：选中额外关系线，直接设置说明、实线或虚线、无箭头/终点箭头/双向箭头以及固定颜色，支持撤销和保存。
 整理布局：清除整图手动偏移，按当前可见分支紧凑排列，折叠状态保留；整个操作可一次撤销。
@@ -104,7 +106,7 @@ Mermaid、数学公式等不提供图形或公式渲染；代码块显示原有�
 构建信息
 Electron 44.5.1，Tiptap 3.31.4。此个人构建未进行代码签名。
 已有文件重命名使用系统自带的 Windows PowerShell 调用不覆盖目标的文件移动接口。
-已有原生测试环境为 Windows 11 Pro x64（10.0.26100）。Windows 10 是兼容目标，未在独立 Win10 实机/虚拟机验证；多台实体显示器、不同输入法与 ARM 原生运行未逐一验证。强制 DPI 测试属于模拟缩放，不等同于实际多屏混合 DPI 测试。本版本实际执行的检查与限制：https://github.com/AkiNariT/Markdown-Editor-Mindmap/blob/v0.1.29/docs/VALIDATION-0.1.29.md
+已有原生测试环境为 Windows 11 Pro x64（10.0.26100）。Windows 10 是兼容目标，未在独立 Win10 实机/虚拟机验证；多台实体显示器、不同输入法与 ARM 原生运行未逐一验证。强制 DPI 测试属于模拟缩放，不等同于实际多屏混合 DPI 测试。本版本实际执行的检查与限制：https://github.com/AkiNariT/Markdown-Editor-Mindmap/blob/v0.1.30/docs/VALIDATION-0.1.30.md
 本项目主要借助 AI 工具开发。源码采用 MIT 许可证，第三方依赖使用各自许可证。macOS 版本列入后续计划，目前没有 Mac 下载包，尚未确定发布日期。
 
 源码开发

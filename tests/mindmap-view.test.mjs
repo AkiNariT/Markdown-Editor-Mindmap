@@ -455,12 +455,14 @@ test('root motion persists through collapse and new children inherit the branch 
   } finally { state.close(); }
 });
 
-test('drag is bounded at the top left and expands the scrollable stage toward the bottom right', () => {
+test('drag grows the canvas past the top left and expands the stage toward the bottom right', () => {
   const state = setup(branch()); const { view } = state;
   try {
+    const before = point(view, 'root'), canvas = view.host.querySelector('.mindmap-canvas');
     const initialWidth = parseFloat(view.host.querySelector('.mindmap-stage').style.width);
     startDrag(view, 'root'); moveDrag(view, -5000, -5000); moveDrag(view, -5000, -5000, 'pointerup');
-    assert.deepEqual(point(view, 'root'), { x: 24, y: 24 });
+    const moved = point(view, 'root');
+    assert.deepEqual({ x: moved.x - canvas.scrollLeft, y: moved.y - canvas.scrollTop }, { x: before.x - 5200, y: before.y - 5200 });
     startDrag(view, 'b'); moveDrag(view, 5000, 5000); moveDrag(view, 5000, 5000, 'pointerup');
     assert.ok(parseFloat(view.host.querySelector('.mindmap-stage').style.width) > initialWidth + 3000);
     assert.equal(state.errors.length, 0);
