@@ -54,7 +54,8 @@ jobs:
         run: |
           image="$RUNNER_TEMP/md-case-sensitive.sparseimage"
           mount_dir=$(mktemp -d "$RUNNER_TEMP/md-case-sensitive.XXXXXX")
-          hdiutil create -size 256m -type SPARSE -fs APFSX -volname MDCaseSensitive "$image"
+          diskutil listFilesystems
+          hdiutil create -size 1g -type SPARSE -fs "Case-sensitive APFS" -volname MDCaseSensitive "$image"
           hdiutil attach -nobrowse -mountpoint "$mount_dir" "$image"
           trap 'hdiutil detach "$mount_dir"' EXIT
           MD_TEST_FILE_ROOT="$mount_dir" MD_TEST_CASE_SENSITIVE=1 node --test tests/macos-files.test.mjs

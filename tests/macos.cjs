@@ -170,6 +170,49 @@ async function command(item, name) {
   assert.equal(await input.inputValue(), draft);
   await page.screenshot({ path: path.join(directory, 'source-draft.png') });
 
+  // Exercise the packaged safe-rename helper through the real naming dialog.
+  // A separate saved document keeps the existing unsaved/quit scenario intact.
+  const draftId = (await ready(item)).id;
+  const beforeRename = path.join(directory, '待改名 Markdown.md');
+  const afterRename = path.join(directory, 'Mac 改名完成.md');
+  const renamedContent = '# Packaged Mac rename\n\nPreserve the original bytes.\n';
+  await writeFile(beforeRename, renamedContent);
+  if (appPath) await execute('/usr/bin/open', ['-a', appPath, beforeRename]);
+  else await item.app.evaluate(({ app }, file) => app.emit('open-file', { preventDefault() {} }, file), beforeRename);
+  const renameState = await until(() => ready(item), value => value.path === beforeRename, 'Finder opens rename fixture');
+  await page.waitForFunction(name => document.querySelector('#document-name').textContent === name && !document.querySelector('#rename').disabled, path.basename(beforeRename));
+  await page.locator('#rename').click(); await page.locator('#name-dialog').waitFor({ state: 'visible' });
+  await page.locator('#filename').fill(path.basename(afterRename));
+  await page.locator('#name-confirm').click();
+  await page.locator('#name-dialog').waitFor({ state: 'hidden' });
+  await until(() => ready(item), value => value.id === renameState.id && value.path === afterRename, 'safe rename updates the same document');
+  await page.waitForFunction(file => document.querySelector('#file-path').textContent === file && !document.querySelector('#rename').disabled, afterRename);
+  assert.equal(await page.getByRole('tab', { name: path.basename(afterRename), exact: true }).count(), 1, 'renamed tab displays the new file name');
+  await assert.rejects(readFile(beforeRename), { code: 'ENOENT' }, 'safe rename removes the original directory entry');
+  assert.equal(await readFile(afterRename, 'utf8'), renamedContent, 'safe rename preserves saved content');
+  await page.screenshot({ path: path.join(directory, 'renamed-document.png') });
+
+  const mapFile = path.join(directory, 'Mac 文件关联.mdmap');
+  await writeFile(mapFile, JSON.stringify({ format: 'md-mindmap', version: 1, root: 'root', nodes: [
+    { id: 'root', parent: null, text: 'Mac 文件关联', file: null, collapsed: false },
+    { id: 'linked', parent: 'root', text: '打开已改名的 Markdown', file: path.basename(afterRename), collapsed: false },
+  ] }));
+  if (appPath) await execute('/usr/bin/open', ['-a', appPath, mapFile]);
+  else await item.app.evaluate(({ app }, file) => app.emit('open-file', { preventDefault() {} }, file), mapFile);
+  const mapState = await until(() => ready(item), value => value.path === mapFile && value.type === 'mindmap', 'Finder opens the mind map');
+  const linkedNode = page.locator('[data-node-id="linked"]'); await linkedNode.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => !document.querySelector('#save').disabled);
+  await page.screenshot({ path: path.join(directory, 'mindmap-linked-file.png') });
+  await linkedNode.dblclick();
+  const linkedState = await until(() => ready(item), value => value.path === afterRename && value.id === renameState.id, 'mind map double-click reuses the renamed Markdown tab');
+  await page.waitForFunction(name => document.querySelector('#document-name').textContent === name && !document.querySelector('#save').disabled, path.basename(afterRename));
+  assert.equal(linkedState.documents.length, mapState.documents.length, 'linked file opens without a duplicate Markdown tab');
+  assert.equal(await page.locator('.tiptap h1').textContent(), 'Packaged Mac rename');
+  await page.evaluate(id => window.moye.activateTab(id), draftId);
+  await until(() => ready(item), value => value.id === draftId && value.path === original, 'return to original unsaved draft');
+  await until(() => input.inputValue(), value => value === draft, 'rename and mind map navigation retain the original draft');
+  console.log('PASS packaged safe rename through UI and Finder mind map linking to the renamed Markdown');
+
   await item.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
   await until(() => visible(item), value => value === false, 'red close hides workspace');
   assert.equal(await item.app.evaluate(() => globalThis.macPrompts.length), 0, 'red close keeps draft without a save prompt');
@@ -204,8 +247,9 @@ async function command(item, name) {
   assert.equal(await readFile(original, 'utf8'), '# Command saved\n', 'Discard on Quit leaves saved original intact');
   await writeFile(path.join(directory, 'result.json'), JSON.stringify({ platform: process.platform, arch: process.arch,
     finderColdStart: Boolean(appPath), nativeMenus: true, platformSettings: true, sourceAndNativeInputHistory: true,
-    commandSave: true, hideAndReactivate: true, quitCancelAndConfirm: true }, null, 2) + '\n');
-  console.log('MACOS PASS: native menus and language, Command save, source history, hide/reactivate, Finder warm open, cancel Quit and confirmed Command+Q; arch=' + process.arch);
+    commandSave: true, packagedSafeRename: true, finderMindmapLinkedFile: true,
+    hideAndReactivate: true, quitCancelAndConfirm: true }, null, 2) + '\n');
+  console.log('MACOS PASS: native menus and language, Command save, source history, packaged safe rename, mind map linked file, hide/reactivate, Finder warm open, cancel Quit and confirmed Command+Q; arch=' + process.arch);
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   for (const item of running) {
     await item.app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.destroy(); }).catch(() => {});
