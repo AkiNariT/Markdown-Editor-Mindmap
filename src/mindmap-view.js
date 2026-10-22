@@ -11,10 +11,11 @@ const clone = value => ({ ...value,
   nodes: value.nodes.map(node => ({ ...node, ...(node.offset ? { offset: { ...node.offset } } : {}) })),
   ...(value.connections ? { connections: value.connections.map(connection => ({ ...connection })) } : {}),
 });
-const fileKey = path => typeof path === 'string' ? path.replaceAll('\\', '/').toLowerCase() : path;
 const fileName = path => path?.split(/[\\/]/).at(-1) || '';
 
 export function createMindmapView(initialData, options = {}) {
+  const platform = options.platform || 'win32';
+  const fileKey = path => typeof path === 'string' && platform === 'win32' ? path.replaceAll('\\', '/').toLowerCase() : path;
   let data = validateMindmap(initialData), selected = data.root;
   let selectedNodes = new Set([selected]);
   let editable = true, locked = false, destroyed = false, composing = false, textBefore = null;

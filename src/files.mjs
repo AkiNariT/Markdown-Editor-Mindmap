@@ -3,6 +3,7 @@ import { readFile, open, rename, unlink, stat } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, basename, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 const MAX_BYTES = 8 * 1024 * 1024;
 const fingerprint = bytes => createHash('sha256').update(bytes).digest('hex');
 
@@ -32,7 +33,7 @@ if (-not [MdFileMove]::Move($request.source, $request.target, 0)) {
 }
 `;
 function windowsPath(value) { return value.startsWith('\\\\?\\') ? value : value.startsWith('\\\\') ? '\\\\?\\UNC\\' + value.slice(2) : '\\\\?\\' + value; }
-export async function renameDocument(source, name, expectedFingerprint, extension = 'md') {
+export async function renameDocument(source, name, expectedFingerprint, extension = 'md', { platform = process.platform, execFileImpl = execFile, helperPath } = {}) {
   const target = join(dirname(resolve(source)), normalizeDocumentName(name, extension));
   const original = await readDocument(source);
   if (original.fingerprint !== expectedFingerprint) throw new Error(t('文件已被外部修改，请重新打开或另存为后再重命名。'));
@@ -41,7 +42,27 @@ export async function renameDocument(source, name, expectedFingerprint, extensio
     const destination = await stat(target), current = await stat(source);
     if (resolve(source).toLowerCase() !== target.toLowerCase() || destination.dev !== current.dev || destination.ino !== current.ino) throw new Error(t('同目录中已存在这个名称，请换一个文件名。'));
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (process.platform !== 'win32') throw new Error(t('文件重命名目前仅支持 Windows。'));
+  if (platform === 'darwin') {
+    // The helper uses renamex_np(RENAME_EXCL); never fall back to Node rename,
+    // which could overwrite a destination created after the check above.
+    const executable = helperPath || (process.resourcesPath && !process.defaultApp
+      ? join(process.resourcesPath, 'md-rename')
+      : fileURLToPath(new URL('../build/macos/md-rename', import.meta.url)));
+    await new Promise((resolveMove, reject) => {
+      execFileImpl(executable, [resolve(source), target, expectedFingerprint], { encoding: 'utf8', timeout: 15000, maxBuffer: 65536 }, (error, stdout, stderr) => {
+        if (!error) return resolveMove();
+        const code = stderr?.trim();
+        reject(new Error(code === 'EEXIST' ? t('同目录中已存在这个名称，请换一个文件名。')
+          : code === 'ENOENT' ? t('原文件已移动或删除，请重新打开。')
+          : code === 'ECHANGED' ? t('文件已被外部修改，请重新打开或另存为后再重命名。')
+          : ['EACCES', 'EPERM', 'EBUSY'].includes(code) ? t('文件正被占用或没有改名权限，请关闭占用程序后重试。')
+          : code === 'ENOTSUP' ? t('这个磁盘不支持安全重命名，请另存为后再处理原文件。')
+          : t('未能完成重命名，请检查文件位置、权限及应用是否完整。')));
+      });
+    });
+    return target;
+  }
+  if (platform !== 'win32') throw new Error(t('当前系统不支持安全重命名。'));
   await new Promise((resolveMove, reject) => {
     const executable = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     const child = execFile(executable, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(moveScript, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8', timeout: 15000, maxBuffer: 65536 }, (error, stdout, stderr) => {

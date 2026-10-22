@@ -53,7 +53,7 @@ function officialUrl(value, expectedPath) {
   } catch { fail('UPDATE_RESPONSE'); }
 }
 
-function validateRelease(value) {
+function validateRelease(value, packagePrefix) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || typeof value.draft !== 'boolean' || typeof value.prerelease !== 'boolean'
     || typeof value.tag_name !== 'string') fail('UPDATE_RESPONSE');
@@ -66,7 +66,7 @@ function validateRelease(value) {
     || (value.body != null && typeof value.body !== 'string')
     || (value.published_at != null && (typeof value.published_at !== 'string'
       || !Number.isFinite(Date.parse(value.published_at))))) fail('UPDATE_RESPONSE');
-  const filename = `MD-Windows-x64-${parsed.version}.zip`;
+  const filename = packagePrefix ? `${packagePrefix}-${parsed.version}.zip` : null;
   let hasPackage = false;
   for (const asset of value.assets) {
     if (!asset || typeof asset !== 'object' || Array.isArray(asset)
@@ -136,9 +136,11 @@ async function readResponse(response, signal, setCancel) {
   }
 }
 
-export function createUpdateChecker({ currentVersion, fetchImpl = globalThis.fetch, timeoutMs = 12000 }) {
+export function createUpdateChecker({ currentVersion, platform = process.platform, arch = process.arch, fetchImpl = globalThis.fetch, timeoutMs = 12000 }) {
   const installed = parseVersion(currentVersion);
   if (!installed || typeof fetchImpl !== 'function' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) fail('UPDATE_RESPONSE');
+  const packagePrefix = platform === 'win32' && arch === 'x64' ? 'MD-Windows-x64'
+    : platform === 'darwin' && ['arm64', 'x64'].includes(arch) ? `MD-macOS-${arch}` : null;
   let releaseUrl = releasesUrl;
   let inFlight = null;
 
@@ -175,7 +177,7 @@ export function createUpdateChecker({ currentVersion, fetchImpl = globalThis.fet
       if (!Array.isArray(values)) fail('UPDATE_RESPONSE');
       let latest = null;
       for (const value of values) {
-        const candidate = validateRelease(value);
+        const candidate = validateRelease(value, packagePrefix);
         if (candidate && (!latest || compareVersions(candidate.parsed, latest.parsed) > 0)) latest = candidate;
       }
       return {

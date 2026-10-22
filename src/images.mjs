@@ -2,8 +2,9 @@ import { t } from './i18n.mjs';
 import path from 'node:path';
 import { marked } from 'marked';
 
-export function rebaseImages(content, oldBase, newBase) {
-  if (path.resolve(oldBase).toLowerCase() === path.resolve(newBase).toLowerCase()) return content;
+export function rebaseImages(content, oldBase, newBase, { platform = process.platform, pathApi = path } = {}) {
+  const comparePath = value => platform === 'win32' ? value.toLowerCase() : value;
+  if (comparePath(pathApi.resolve(oldBase)) === comparePath(pathApi.resolve(newBase))) return content;
   const tokens = marked.lexer(content), images = [], protectedRaw = [];
   marked.walkTokens(tokens, token => {
     if (token.type === 'image') images.push(token);
@@ -20,7 +21,7 @@ export function rebaseImages(content, oldBase, newBase) {
     if (!token.href || /^[a-z][a-z0-9+.-]*:/i.test(token.href) || token.href.startsWith('//')) continue;
     let source;
     try { source = decodeURIComponent(token.href); } catch { throw new Error(t('图片路径包含无效编码，请先检查图片链接。')); }
-    const relative = path.relative(newBase, path.resolve(oldBase, source)).replace(/\\/g, '/');
+    const relative = pathApi.relative(newBase, pathApi.resolve(oldBase, source)).replace(/\\/g, '/');
     rebased.set(token.href, relative.split('/').map(part => encodeURIComponent(part).replace(/[()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/'));
   }
   const edits = new Map();

@@ -1,7 +1,7 @@
 {
   "name": "moye",
   "productName": "MD",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "description": "极简 Markdown 阅读与可视化编辑器",
   "main": "electron/main.cjs",
   "type": "module",
@@ -40,7 +40,9 @@
     "test:mindmap-features": "node tests/mindmap-features.cjs",
     "package:portable": "npm run build && npm run package && node scripts/package-portable.mjs",
     "test:portable": "node tests/portable.cjs",
-    "test:performance": "node tests/performance.cjs"
+    "test:performance": "node tests/performance.cjs",
+    "package:mac": "npm run build && node scripts/package-macos.mjs",
+    "test:mac": "node tests/macos.cjs"
   },
   "license": "MIT",
   "author": "MD contributors",
@@ -57,7 +59,8 @@
     "editor",
     "mindmap",
     "electron",
-    "windows"
+    "windows",
+    "macos"
   ],
   "dependencies": {
     "@tiptap/core": "3.31.4",

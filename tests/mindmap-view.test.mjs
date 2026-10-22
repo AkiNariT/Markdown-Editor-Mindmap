@@ -703,7 +703,7 @@ test('Chinese composition is one undo step and user text is rendered as text', (
 
 test('links can be opened and removed, and renames survive undo and redo', async () => {
   const opened = [];
-  const state = setup(base(), { onLink: async () => 'C:\\notes\\first.md', onOpen: async id => opened.push(id) });
+  const state = setup(base(), { platform: 'win32', onLink: async () => 'C:\\notes\\first.md', onOpen: async id => opened.push(id) });
   const { view } = state;
   try {
     button(view, '关联 Markdown').click(); await tick();
@@ -727,6 +727,62 @@ test('links can be opened and removed, and renames survive undo and redo', async
     view.undo();
     assert.equal(view.getData().nodes[0].file, 'C:\\notes\\renamed.md');
     assert.equal(JSON.parse(view.getText()).nodes[0].file, 'C:\\notes\\renamed.md');
+  } finally { state.close(); }
+});
+
+const caseSensitiveLinks = () => {
+  const data = branch();
+  data.nodes[0].file = '/notes/Plan.md';
+  data.nodes[1].file = '/notes/plan.md';
+  return data;
+};
+const linkedPaths = view => view.getData().nodes.slice(0, 2).map(node => node.file);
+
+test('Mac rename updates only the matching case-sensitive link across open maps', () => {
+  const matching = setup(caseSensitiveLinks(), { platform: 'darwin' });
+  const unrelatedData = base(); unrelatedData.nodes[0].file = '/notes/plan.md';
+  const unrelated = setup(unrelatedData, { platform: 'darwin' });
+  try {
+    for (const { view } of [matching, unrelated]) view.replaceFile('/notes/Plan.md', '/notes/Renamed.md');
+    assert.deepEqual(linkedPaths(matching.view), ['/notes/Renamed.md', '/notes/plan.md']);
+    assert.equal(unrelated.view.getData().nodes[0].file, '/notes/plan.md');
+    assert.equal(unrelated.changes.length, 0, 'broadcasting another file rename must not dirty an unrelated map');
+  } finally { matching.close(); unrelated.close(); }
+});
+
+test('Mac rename preserves case-distinct links throughout existing undo and redo history', () => {
+  const state = setup(caseSensitiveLinks(), { platform: 'darwin' });
+  const { view } = state;
+  try {
+    input(view, 'first edit').blur();
+    input(view, 'second edit').blur();
+    assert.equal(view.undo(), true);
+    view.replaceFile('/notes/Plan.md', '/notes/Renamed.md');
+    assert.equal(view.undo(), true);
+    assert.equal(view.getData().nodes[0].text, '中心主题');
+    assert.deepEqual(linkedPaths(view), ['/notes/Renamed.md', '/notes/plan.md']);
+    assert.equal(view.redo(), true);
+    assert.equal(view.getData().nodes[0].text, 'first edit');
+    assert.deepEqual(linkedPaths(view), ['/notes/Renamed.md', '/notes/plan.md']);
+    assert.equal(view.redo(), true);
+    assert.equal(view.getData().nodes[0].text, 'second edit');
+    assert.deepEqual(linkedPaths(view), ['/notes/Renamed.md', '/notes/plan.md']);
+    assert.deepEqual(state.errors, []);
+  } finally { state.close(); }
+});
+
+test('Mac rename preserves case-distinct links in a pending text edit snapshot', () => {
+  const state = setup(caseSensitiveLinks(), { platform: 'darwin' });
+  const { view } = state;
+  try {
+    input(view, 'pending edit');
+    view.replaceFile('/notes/Plan.md', '/notes/Renamed.md');
+    assert.equal(view.undo(), true);
+    assert.equal(view.getData().nodes[0].text, '中心主题');
+    assert.deepEqual(linkedPaths(view), ['/notes/Renamed.md', '/notes/plan.md']);
+    assert.equal(view.redo(), true);
+    assert.equal(view.getData().nodes[0].text, 'pending edit');
+    assert.deepEqual(linkedPaths(view), ['/notes/Renamed.md', '/notes/plan.md']);
   } finally { state.close(); }
 });
 

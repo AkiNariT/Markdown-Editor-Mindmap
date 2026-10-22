@@ -5,13 +5,14 @@ import backend from '../src/locales/backend.mjs';
 import workspace from '../src/locales/workspace.mjs';
 import mindmapModel from '../src/locales/mindmap-model.mjs';
 import feedback from '../src/locales/feedback.mjs';
+import platform from '../src/locales/platform.mjs';
 import { readFile, readdir } from 'node:fs/promises';
 import { Script } from 'node:vm';
 
 test('English catalogs preserve named values and agree on shared interface labels', () => {
   const seen = new Map();
   const names = text => [...new Set([...text.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map(match => match[1]))].sort();
-  for (const catalog of [app, backend, workspace, mindmapModel, feedback]) {
+  for (const catalog of [app, backend, workspace, mindmapModel, feedback, platform]) {
     assert.ok(Object.keys(catalog).length > 0, 'catalog must contain translations');
     for (const [key, value] of Object.entries(catalog)) {
       assert.equal(typeof value, 'string', key); assert.ok(value.trim(), key);
@@ -24,7 +25,7 @@ test('English catalogs preserve named values and agree on shared interface label
 });
 
 test('explicit translation calls and static interface markers have English entries', async () => {
-  const messages = { ...app, ...backend, ...workspace, ...mindmapModel, ...feedback };
+  const messages = { ...app, ...backend, ...workspace, ...mindmapModel, ...feedback, ...platform };
   const files = ['electron/main.cjs', 'electron/mindmap-export.cjs', ...(await readdir(new URL('../src/', import.meta.url))).filter(name => /\.(mjs|js)$/.test(name)).map(name => 'src/' + name)];
   for (const file of files) {
     const code = await readFile(new URL('../' + file, import.meta.url), 'utf8');

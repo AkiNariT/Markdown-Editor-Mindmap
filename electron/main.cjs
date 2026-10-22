@@ -4,6 +4,9 @@ const fs = require('node:fs/promises');
 const { randomUUID } = require('node:crypto');
 const { pathToFileURL, fileURLToPath } = require('node:url');
 const { applicationLaunchContext, secondInstanceWorkingDirectory } = require('../src/application-launch.mjs');
+const { createMacLifecycle } = require('../src/macos-lifecycle.mjs');
+const { createMacMenuTemplate } = require('../src/macos-menu.mjs');
+const { documentFileKey } = require('../src/file-identity.mjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'moye-image', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const dataArg = process.argv.find(arg => arg.startsWith('--user-data-dir='));
@@ -30,6 +33,21 @@ const imageTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/
 const markdownPath = name => typeof name === 'string' && /\.(md|markdown)$/i.test(name);
 const mindmapPath = name => typeof name === 'string' && /\.mdmap$/i.test(name);
 const supportedPath = name => markdownPath(name) || mindmapPath(name);
+const macLifecycle = process.platform === 'darwin' ? createMacLifecycle({
+  app, getWindow: () => win,
+  enqueueOpen: target => {
+    if (openQueue) openQueue.enqueue([target]);
+    else pendingOpenRequests.push({ paths: [target] });
+  },
+  onHide: () => { void saveWindowPlacement(); },
+}) : null;
+function setApplicationMenu() {
+  if (!macLifecycle) return;
+  Menu.setApplicationMenu(Menu.buildFromTemplate(createMacMenuTemplate({ t, dispatch: command => {
+    macLifecycle.showWindow();
+    if (rendererReady && !closing && win && !win.isDestroyed()) win.webContents.send('moye:command', command);
+  } })));
+}
 const welcome = () => t('# 留一点空间，给文字。\n\n欢迎来到 **MD**。这里可以阅读 Markdown，也可以直接在排版后的正文里编辑。\n\n## 从一份文档开始\n\n点击左上角的「打开」，或把 `.md` 文件拖进窗口。点击「编辑」后，就能像写笔记一样输入和修改。\n\n## 格式，按需出现\n\n选中一段文字，设置 **粗体**、*斜体* 或标题。标题、列表、引用、表格和图片直接显示在正文上方的编辑栏。\n\n> 少一点界面，多一点专注。\n\n## 一切保存在本地\n\n修改后点击「保存」，文件仍然是 Markdown。关闭文档前，MD会提醒你保存尚未保存的内容。\n');
 
 function isSkillDocument(value = doc) { return value.type !== 'mindmap' && (value.skillDocument ?? (value.path ? path.basename(value.path).toLowerCase() === 'skill.md' : value.suggestedName === 'SKILL.md')); }
@@ -195,11 +213,7 @@ async function guardUnsaved(document = doc, discarded) {
   discarded?.add(document.id);
   return true;
 }
-async function fileKey(target) {
-  try { return (await fs.realpath(target)).toLowerCase(); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  try { return path.join(await fs.realpath(path.dirname(target)), path.basename(target)).toLowerCase(); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; return path.resolve(target).toLowerCase(); }
-}
+const fileKey = documentFileKey;
 async function renameDocument(id, requestedName) {
   const record = documents.get(id); if (!record) throw new Error(t('文档标签已关闭。'));
   const extension = record.type === 'mindmap' ? 'mdmap' : 'md';
@@ -360,8 +374,9 @@ if (ownsProfile) app.whenReady().then(async () => {
   const settings = await import(pathToFileURL(path.join(root, 'src/settings.mjs')).href);
   settingsStore = settings.createSettingsStore(app.getPath('userData'));
   setLocale((await settingsStore.load()).language);
+  setApplicationMenu();
   const updates = await import(pathToFileURL(path.join(root, 'src/updates.mjs')).href);
-  updateChecker = updates.createUpdateChecker({ currentVersion: app.getVersion(), fetchImpl: (url, options) => net.fetch(url, options) });
+  updateChecker = updates.createUpdateChecker({ currentVersion: app.getVersion(), platform: process.platform, arch: process.arch, fetchImpl: (url, options) => net.fetch(url, options) });
   ({ openWindowsDefaultApps, openWindowsDefaultSettings } = await import(pathToFileURL(path.join(root, 'src/windows-default.mjs')).href));
   files = await import(pathToFileURL(path.join(root, 'src/files.mjs')).href);
   helpers = await import(pathToFileURL(path.join(root, 'src/document.mjs')).href);
@@ -378,7 +393,7 @@ if (ownsProfile) app.whenReady().then(async () => {
   const placement = resolveWindowPlacement(await windowStore.load());
   lastWindowState = { bounds: placement.bounds, maximized: placement.maximized };
   protocol.handle('moye-image', imageRequest);
-  win = new BrowserWindow({ ...placement.bounds, minWidth: placement.minWidth, minHeight: placement.minHeight, show: false, title: 'MD', icon: path.join(root, 'assets/icon.ico'), backgroundColor: '#f8f7f4', autoHideMenuBar: true,
+  win = new BrowserWindow({ ...placement.bounds, minWidth: placement.minWidth, minHeight: placement.minHeight, show: false, title: 'MD', ...(process.platform === 'win32' ? { icon: path.join(root, 'assets/icon.ico') } : {}), backgroundColor: '#f8f7f4', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false }, });
   applyWindowBounds(placement.bounds);
   await restoreSession();
@@ -387,11 +402,11 @@ if (ownsProfile) app.whenReady().then(async () => {
     open: async target => { busy = true; try { await openDocument(target, rendererReady); } finally { busy = false; } },
     onError: error => dialog.showErrorBox(t('打开失败'), t(error.message)),
   });
-  for (const request of pendingOpenRequests.splice(0)) openQueue.enqueue(openArguments(request.argv, request.cwd));
+  for (const request of pendingOpenRequests.splice(0)) openQueue.enqueue(request.paths || openArguments(request.argv, request.cwd));
   openingInitial = true; await openQueue.drain(); openingInitial = false;
   if (!documents.size) setDocument({ path: null, content: welcome(), fingerprint: null }, false, false);
   handle('get-settings', () => ({ language: getLocale() }));
-  handle('get-app-info', () => ({ version: app.getVersion() }));
+  handle('get-app-info', () => ({ version: app.getVersion(), platform: process.platform, arch: process.arch }));
   async function defaultAppAction(callback) {
     try { return await callback(); }
     catch (error) {
@@ -433,6 +448,7 @@ if (ownsProfile) app.whenReady().then(async () => {
   handle('set-language', async language => {
     const saved = await settingsStore.setLanguage(language);
     setLocale(saved.language);
+    setApplicationMenu();
     if (doc) updateTitle();
     return saved;
   });
@@ -580,7 +596,8 @@ if (ownsProfile) app.whenReady().then(async () => {
   });
   win.on('close', event => {
     if (closing) return;
-    if (busy) { event.preventDefault(); if (checkpointInProgress) closeAfterCheckpoint = true; return; }
+    if (macLifecycle?.hideOnClose(event)) return;
+    if (busy) { event.preventDefault(); if (checkpointInProgress) closeAfterCheckpoint = true; else macLifecycle?.cancelQuit(); return; }
     event.preventDefault(); busy = true;
     (async () => {
       await askCloseState();
@@ -593,12 +610,13 @@ if (ownsProfile) app.whenReady().then(async () => {
       await saveWindowPlacement();
       return true;
     })()
-      .then(ok => { if (ok) { closing = true; win.close(); } }).catch(error => dialog.showErrorBox(t('保存失败'), t(error.message))).finally(() => {
+      .then(ok => { if (ok) { closing = true; if (macLifecycle) macLifecycle.confirmQuit(); else win.close(); } }).catch(error => dialog.showErrorBox(t('保存失败'), t(error.message))).finally(() => {
+        if (!closing) macLifecycle?.cancelQuit();
         busy = false; if (!win.isDestroyed()) { win.webContents.send('moye:closing-canceled'); drainOpenQueue(); }
       });
   });
   await win.loadFile(path.join(root, 'index.html'));
   if (placement.maximized) win.maximize();
   win.show(); scheduleWindowPlacement();
-}).catch(error => { console.error(t('MD启动失败'), error); dialog.showErrorBox(t('MD启动失败'), t(error.message)); app.quit(); });
+}).catch(error => { console.error(t('MD启动失败'), error); dialog.showErrorBox(t('MD启动失败'), t(error.message)); macLifecycle?.allowQuit(); app.quit(); });
 app.on('window-all-closed', () => app.quit());

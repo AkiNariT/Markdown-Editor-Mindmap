@@ -1,0 +1,89 @@
+name: macOS preview packages
+
+on:
+  push:
+    branches: [main, feat/macos-support]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      MD_BUILD_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Confirm the native runner architecture
+        run: node -e "if (process.platform !== 'darwin' || process.arch !== process.env.MD_BUILD_ARCH) throw new Error('Unexpected runner architecture'); console.log(process.platform, process.arch)"
+      - run: npm ci
+      - name: Build the native safe-rename helper for unit tests
+        run: node scripts/build-macos-helper.mjs --arch "$MD_BUILD_ARCH"
+      - name: Run unit and native file tests
+        run: node --test --test-concurrency=1 tests/*.test.mjs
+      - name: Build and verify the ad-hoc signed app, ZIP and DMG
+        run: npm run package:mac -- --arch "$MD_BUILD_ARCH"
+      - name: Select the packaged application
+        run: |
+          echo "MOYE_APP=$GITHUB_WORKSPACE/.packaged/MD-darwin-$MD_BUILD_ARCH/MD.app" >> "$GITHUB_ENV"
+          echo "MOYE_EXE=$GITHUB_WORKSPACE/.packaged/MD-darwin-$MD_BUILD_ARCH/MD.app/Contents/MacOS/MD" >> "$GITHUB_ENV"
+          echo "MD_TEST_RENAME_HELPER=$GITHUB_WORKSPACE/.packaged/MD-darwin-$MD_BUILD_ARCH/MD.app/Contents/Resources/md-rename" >> "$GITHUB_ENV"
+      - name: Verify document safety with the packaged native helper
+        run: node --test tests/macos-files.test.mjs
+      - name: Verify document safety on a case-sensitive APFS volume
+        run: |
+          image="$RUNNER_TEMP/md-case-sensitive.sparseimage"
+          mount_dir=$(mktemp -d "$RUNNER_TEMP/md-case-sensitive.XXXXXX")
+          hdiutil create -size 256m -type SPARSE -fs APFSX -volname MDCaseSensitive "$image"
+          hdiutil attach -nobrowse -mountpoint "$mount_dir" "$image"
+          trap 'hdiutil detach "$mount_dir"' EXIT
+          MD_TEST_FILE_ROOT="$mount_dir" MD_TEST_CASE_SENSITIVE=1 node --test tests/macos-files.test.mjs
+      - name: Verify native menus, Finder open, shortcuts and application lifecycle
+        run: node tests/macos.cjs
+      - name: Check the downloadable artifact hashes
+        working-directory: .packaged/macos/${{ matrix.arch }}
+        run: shasum -a 256 -c ./*.sha256
+      - name: Upload verified preview packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: MD-macOS-${{ matrix.arch }}-preview
+          path: |
+            .packaged/macos/${{ matrix.arch }}/*.zip
+            .packaged/macos/${{ matrix.arch }}/*.dmg
+            .packaged/macos/${{ matrix.arch }}/*.sha256
+            .packaged/macos/${{ matrix.arch }}/*.build.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+      - name: Keep native test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-${{ matrix.arch }}-test-evidence
+          path: |
+            .desktop-test/macos*/**/*.json
+            .desktop-test/macos*/**/*.png
+            .desktop-test/macos*/**/*.log
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
