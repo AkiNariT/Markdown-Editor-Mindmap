@@ -2,7 +2,7 @@ name: macOS preview packages
 
 on:
   push:
-    branches: [main, feat/macos-support]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
