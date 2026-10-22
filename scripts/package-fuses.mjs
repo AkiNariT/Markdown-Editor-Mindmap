@@ -4,9 +4,12 @@ import { flipFuses, getCurrentFuseWire, FuseVersion, FuseV1Options } from '@elec
 // Node options are likewise irrelevant to end users and can prevent startup.
 // Keep the CLI inspector for our packaged Playwright regression tests. The
 // unpacked resources/app layout also requires OnlyLoadAppFromAsar to stay off.
-export async function configurePackagedFuses(executable) {
+export async function configurePackagedFuses(executable, { resetAdHocDarwinSignature = false } = {}) {
   await flipFuses(executable, {
     version: FuseVersion.V1,
+    // Modifying Electron Framework invalidates its signature. macOS releases
+    // restore an ad-hoc signature only after all app content has been written.
+    resetAdHocDarwinSignature,
     [FuseV1Options.RunAsNode]: false,
     [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
     [FuseV1Options.OnlyLoadAppFromAsar]: false,

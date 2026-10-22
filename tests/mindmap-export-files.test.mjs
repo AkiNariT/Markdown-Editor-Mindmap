@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { exportMindmap, exportFilePaths, rasterDimensions } = require('../electron/mindmap-export.cjs');
@@ -43,7 +43,7 @@ test('confirmed replacement writes the new content and cleans staged files', asy
 test('chapter names cannot escape the selected folder and duplicate titles stay distinct', () => {
   const paths = exportFilePaths(join(process.cwd(), 'lesson.svg'), 'svg', [{ title: '../../CON' }, { title: '../../CON' }]);
   assert.equal(new Set(paths).size, 2);
-  assert.ok(paths.every(path => path.startsWith(process.cwd() + '\\') && !path.slice(process.cwd().length + 1).includes('\\')));
+  assert.ok(paths.every(path => dirname(path) === process.cwd()));
   assert.ok(paths.every(path => path.endsWith('.svg')));
 });
 

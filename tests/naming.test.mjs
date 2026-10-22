@@ -48,3 +48,32 @@ test('case-only rename updates the on-disk spelling without replacing another fi
   assert.deepEqual(await readdir(dir), ['NOTES.md']);
   assert.equal(await readFile(target, 'utf8'), document.content);
 });
+
+test('Mac rename reports an exclusive native-operation failure and preserves source bytes', async t => {
+  const { dir, document } = await fixture(t);
+  const calls = [];
+  const execFileImpl = (executable, args, options, callback) => {
+    calls.push({ executable, args });
+    queueMicrotask(() => callback(new Error('native failure'), '', 'ENOTSUP'));
+  };
+  await assert.rejects(files.renameDocument(document.path, '中文新名', document.fingerprint, 'md', {
+    platform: 'darwin', execFileImpl, helperPath: '/Applications/MD.app/Contents/Resources/md-rename',
+  }), /不支持安全重命名/);
+  assert.deepEqual(calls, [{ executable: '/Applications/MD.app/Contents/Resources/md-rename', args: [document.path, join(dir, '中文新名.md'), document.fingerprint] }]);
+  assert.equal(await readFile(document.path, 'utf8'), document.content);
+  assert.deepEqual(await readdir(dir), ['原文件.md']);
+});
+
+test('Mac rename translates a late destination conflict without retrying an overwriting move', async t => {
+  const { dir, document } = await fixture(t);
+  const destination = join(dir, '冲突.md');
+  let calls = 0;
+  const execFileImpl = (executable, args, options, callback) => {
+    calls++;
+    writeFile(destination, '外部创建').then(() => callback(new Error('native conflict'), '', 'EEXIST'));
+  };
+  await assert.rejects(files.renameDocument(document.path, '冲突', document.fingerprint, 'md', { platform: 'darwin', execFileImpl }), /已存在/);
+  assert.equal(calls, 1);
+  assert.equal(await readFile(destination, 'utf8'), '外部创建');
+  assert.equal(await readFile(document.path, 'utf8'), document.content);
+});
