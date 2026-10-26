@@ -12,7 +12,7 @@
 
 ## macOS 版本
 
-**状态：0.1.31 适配预览分支开发与验证中；公开下载以 Releases 附件为准。**
+**状态：0.1.31 预览构建已通过 Apple Silicon 与 Intel 的原生自动化，等待个人 Mac 试用；公开下载以 Releases 附件为准。**
 
 适配范围包括 Finder 打开、原生菜单、Command 快捷键、安全重命名、窗口隐藏与退出保护，以及 Apple 芯片和 Intel 的独立 DMG/ZIP。最低 macOS 13；原生自动化使用 macOS 15。具体操作与限制见 [Mac 说明](docs/MACOS.md)，执行结果以对应构建日志为准。
 
@@ -28,6 +28,6 @@
 
 MD will continue improving its existing Markdown editing, mindmap, file-protection, recovery, performance and language features.
 
-**The 0.1.31 macOS preview branch is under development and validation.** It targets macOS 13+ on Apple Silicon and Intel, with native automation on macOS 15. Public availability depends on actual Releases assets. See [the Mac guide](docs/MACOS.md). Developer ID signing, notarization and broader device validation remain planned without a committed date.
+**The 0.1.31 macOS preview has passed native automation on Apple Silicon and Intel and is ready for personal-device testing.** It targets macOS 13+ with native automation on macOS 15. Public availability depends on actual Releases assets. See [the Mac guide](docs/MACOS.md) and [validation record](docs/VALIDATION-0.1.31-MACOS.md). Developer ID signing, notarization and broader device validation remain planned without a committed date.
 
 Actual changes belong in the changelog and published versions in Releases. Planned work is not a claim of current support.

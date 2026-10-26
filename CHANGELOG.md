@@ -2,6 +2,8 @@
 
 ## 0.1.31 — macOS 适配（开发预览，尚未正式发布）
 
+Apple Silicon 与 Intel 的原生构建及回归已通过，实际执行范围与未完成的人工检查见 [Mac 验证记录](docs/VALIDATION-0.1.31-MACOS.md)。
+
 - 增加 Apple Silicon（arm64）与 Intel（x64）独立 macOS 应用、DMG 和 ZIP 构建，最低系统为 macOS 13 Ventura。
 - 增加原生菜单、Command 快捷键、Finder 文件打开与 Mac 文件关联指引。关闭窗口保留工作区，点击 Dock 图标继续；明确退出时检查未保存修改。
 - 重命名使用 macOS 原生防覆盖操作，正确处理大小写敏感磁盘；更新检查按系统与芯片选择对应下载包。

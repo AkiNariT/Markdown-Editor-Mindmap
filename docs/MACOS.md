@@ -1,6 +1,6 @@
 # macOS 适配预览 / macOS preview
 
-本分支准备 MD 0.1.31 的 Mac 预览版，使用现有 Electron 框架和 `.mdmap` 文件格式。正式公开下载仍以仓库 Releases 中实际提供的附件为准；GitHub Actions 的构建附件用于测试，不等于正式发布。
+本分支提供 MD 0.1.31 的 Mac 预览构建，使用现有 Electron 框架和 `.mdmap` 文件格式。两种芯片的原生自动化已通过，具体结果与人工验收边界见 [验证记录](VALIDATION-0.1.31-MACOS.md)。正式公开下载仍以仓库 Releases 中实际提供的附件为准；GitHub Actions 的构建附件用于测试，不等于正式发布。
 
 ## 系统与芯片
 
