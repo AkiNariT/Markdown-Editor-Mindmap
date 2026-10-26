@@ -183,10 +183,10 @@ async function captureFailure(item, error) {
   assert.equal((await page.evaluate(() => window.moye.getAppInfo())).platform, 'darwin');
 
   await page.keyboard.press('Meta+n');
-  await until(() => ready(item), value => value.documents.length === 2, 'Command+N opens one tab');
-  await sleep(150); assert.equal((await ready(item)).documents.length, 2, 'native accelerator does not also run the DOM command');
+  await until(() => ready(item), value => value.documents.length === 2, 'DOM Command+N opens one tab');
+  await sleep(150); assert.equal((await ready(item)).documents.length, 2, 'DOM Command+N opens exactly one tab');
   await page.keyboard.press('Meta+w');
-  await until(() => ready(item), value => value.documents.length === 1 && value.path === original, 'Command+W closes only the new tab');
+  await until(() => ready(item), value => value.documents.length === 1 && value.path === original, 'DOM Command+W closes only the new tab');
   assert.equal(await visible(item), true);
 
   await command(item, 'settings'); await page.locator('#settings-dialog').waitFor({ state: 'visible' });
@@ -208,7 +208,7 @@ async function captureFailure(item, error) {
   await page.getByRole('button', { name: '编辑', exact: true }).click();
   const input = page.locator('.source-input'); await input.fill('# Command saved\n');
   await input.press('Meta+s');
-  await until(() => readFile(original, 'utf8'), value => value === '# Command saved\n', 'Command+S saves through native menu once');
+  await until(() => readFile(original, 'utf8'), value => value === '# Command saved\n', 'DOM Command+S saves the document');
   const draft = '# Draft retained after close\n'; await input.fill(draft);
   await command(item, 'undo'); await until(() => input.inputValue(), value => value === '# Command saved\n', 'native Undo uses source history');
   await command(item, 'redo'); await until(() => input.inputValue(), value => value === draft, 'native Redo uses source history');
@@ -299,16 +299,33 @@ async function captureFailure(item, error) {
   await item.app.evaluate(({ app }) => app.emit('activate'));
 
   assert.deepEqual(item.errors, []); assert.deepEqual(await item.app.evaluate(() => globalThis.macErrors), []);
-  await item.app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+  // Playwright injects page keyboard events through CDP, not macOS system menu
+  // accelerators. Verify the native Quit role separately, then exercise the real
+  // app.quit guard again after Cancel, observing its second prompt before Discard.
+  const quitRoles = await item.app.evaluate(({ Menu }) => {
+    const collect = menu => menu.items.flatMap(item => [item, ...(item.submenu ? collect(item.submenu) : [])]);
+    return collect(Menu.getApplicationMenu()).filter(item => item.role === 'quit').map(item => item.role);
+  });
+  assert.deepEqual(quitRoles, ['quit'], 'application menu retains the standard native Quit role');
+  await item.app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = (_window, options) => new Promise(resolve => {
+      globalThis.macPrompts.push(options.message);
+      globalThis.macConfirmQuit = () => resolve({ response: 1 });
+    });
+  });
+  await item.app.evaluate(({ app }) => app.quit());
+  await until(() => item.app.evaluate(() => globalThis.macPrompts.length), value => value === 2, 'second Quit asks again after Cancel');
   const closed = page.waitForEvent('close');
-  await page.keyboard.press('Meta+q'); await closed;
+  await item.app.evaluate(() => { setImmediate(() => globalThis.macConfirmQuit()); });
+  await closed;
   await item.app.close().catch(() => {}); running.delete(item);
   assert.equal(await readFile(original, 'utf8'), '# Command saved\n', 'Discard on Quit leaves saved original intact');
   await writeFile(path.join(directory, 'result.json'), JSON.stringify({ platform: process.platform, arch: process.arch,
-    finderColdStart: Boolean(appPath), nativeMenus: true, platformSettings: true, sourceAndNativeInputHistory: true,
-    commandSave: true, packagedSafeRename: true, finderMindmapLinkedFile: true,
-    hideAndReactivate: true, quitCancelAndConfirm: true }, null, 2) + '\n');
-  console.log('MACOS PASS: native menus and language, Command save, source history, packaged safe rename, mind map linked file, hide/reactivate, Finder warm open, cancel Quit and confirmed Command+Q; arch=' + process.arch);
+    finderColdStart: Boolean(appPath), nativeMenuCommands: true, nativeQuitRole: true,
+    platformSettings: true, sourceAndNativeInputHistory: true, domCommandShortcuts: ['N', 'W', 'S'],
+    systemCommandQ: 'not-tested', packagedSafeRename: true, finderMindmapLinkedFile: true,
+    hideAndReactivate: true, quitCancelAndConfirmViaAppQuit: true }, null, 2) + '\n');
+  console.log('MACOS PASS: native menu command dispatch and language, DOM Command+N/W/S, source history, packaged safe rename, mind map linked file, hide/reactivate, Finder warm open, native Quit role, app.quit Cancel then confirmed Discard; system Command+Q not tested; arch=' + process.arch);
 })().catch(async error => {
   console.error(error); process.exitCode = 1;
   for (const item of running) await captureFailure(item, error).catch(failure => console.error('Failure evidence could not be saved:', failure));

@@ -41,9 +41,22 @@ export async function documentFileKey(target, { platform = process.platform, pat
   }
 }
 
-// Match references before moving the file, while aliases still resolve. Use
-// the same canonical path identity as open tabs: a separate hardlink keeps its
-// own path and must not be rebound to a name that another file has acquired.
+// Moving a symlink renames its directory entry, not the file it points to.
+// Resolve parent aliases without dereferencing the final path component.
+async function documentEntryKey(target, { platform, pathApi, fsApi }) {
+  const entry = pathApi.join(await fsApi.realpath(pathApi.dirname(target)), pathApi.basename(target));
+  if (platform === 'win32') return entry.toLowerCase();
+  if (platform !== 'darwin') return entry;
+  try { return await diskSpelling(entry, pathApi, fsApi); }
+  catch (error) {
+    if (['EACCES', 'EPERM'].includes(error.code)) return entry;
+    throw error;
+  }
+}
+
+// Match references before moving the file, while aliases still resolve. A
+// regular file uses the same canonical path identity as open tabs, keeping
+// separate hardlinks distinct. A source symlink uses its own entry identity.
 export async function findDocumentAliases(target, candidates, { platform = process.platform, pathApi = path, fsApi = fs } = {}) {
   const invalid = () => Object.assign(new TypeError('Invalid document reference paths'), { code: 'INVALID_DOCUMENT_REFERENCES' });
   if (!Array.isArray(candidates) || candidates.length > 100000) throw invalid();
@@ -54,14 +67,17 @@ export async function findDocumentAliases(target, candidates, { platform = proce
   }
   if (!candidates.length) return [];
   const options = { platform, pathApi, fsApi };
-  const sourceKey = await documentFileKey(target, options);
+  const sourceIsSymlink = (await fsApi.lstat(target)).isSymbolicLink();
+  const keyFor = sourceIsSymlink ? documentEntryKey : documentFileKey;
+  const sourceKey = await keyFor(target, options);
   const unique = [...new Set(candidates)], aliases = [];
   // Bound concurrent filesystem work even when many maps have undo history.
   for (let index = 0; index < unique.length; index += 16) {
     const matches = await Promise.all(unique.slice(index, index + 16).map(async candidate => {
       try {
-        await fsApi.stat(candidate);
-        return await documentFileKey(candidate, options) === sourceKey ? candidate : null;
+        if (sourceIsSymlink) await fsApi.lstat(candidate);
+        else await fsApi.stat(candidate);
+        return await keyFor(candidate, options) === sourceKey ? candidate : null;
       } catch (error) {
         if (['ENOENT', 'ENOTDIR'].includes(error.code)) return null;
         throw error;

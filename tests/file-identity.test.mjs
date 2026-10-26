@@ -5,8 +5,12 @@ import fs from 'node:fs/promises';
 import { documentFileKey } from '../src/file-identity.mjs';
 import * as identity from '../src/file-identity.mjs';
 
-function virtualFs({ paths, directories, identities = {} }) {
+function virtualFs({ paths, directories, identities = {}, symlinks = [] }) {
   return {
+    async lstat(value) {
+      if (Object.hasOwn(paths, value)) return { isSymbolicLink: () => symlinks.includes(value) };
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    },
     async stat(value) {
       if (Object.hasOwn(paths, value)) {
         assert.ok(Object.hasOwn(identities, value), `Missing fixture identity: ${value}`);
@@ -46,6 +50,28 @@ test('rename alias lookup keeps case-sensitive Mac files separate', async () => 
   assert.deepEqual(await identity.findDocumentAliases('/Notes/Plan.md', ['/Notes/plan.md', '/alias.md'], { platform: 'darwin', pathApi: path.posix, fsApi }), ['/alias.md']);
 });
 
+test('source symbolic link rename matches its directory entry aliases without rebinding its target or another link', async () => {
+  const source = '/Notes/Alias.md', caseAlias = '/notes/alias.md', parentAlias = '/shortcut/Alias.md';
+  const real = '/Notes/real.md', other = '/Notes/other.md';
+  const fsApi = virtualFs({
+    paths: { '/Notes': '/Notes', '/notes': '/notes', '/shortcut': '/Notes', [source]: real, [caseAlias]: real, [parentAlias]: real, [real]: real, [other]: real },
+    directories: { '/': ['Notes', 'shortcut'], '/Notes': ['Alias.md', 'real.md', 'other.md'] },
+    identities: { [source]: 1n, [caseAlias]: 1n, [parentAlias]: 1n, [real]: 1n, [other]: 1n },
+    symlinks: [source, caseAlias, parentAlias, other],
+  });
+  assert.deepEqual(await identity.findDocumentAliases(source, [source, caseAlias, parentAlias, real, other], { platform: 'darwin', pathApi: path.posix, fsApi }), [source, caseAlias, parentAlias]);
+});
+
+test('source symbolic link rename preserves a separate case-sensitive link to the same target', async () => {
+  const source = '/Notes/Alias.md', other = '/Notes/alias.md', real = '/Notes/real.md';
+  const fsApi = virtualFs({
+    paths: { '/Notes': '/Notes', [source]: real, [other]: real, [real]: real },
+    directories: { '/': ['Notes'], '/Notes': ['Alias.md', 'alias.md', 'real.md'] },
+    identities: { [source]: 1n, [other]: 1n, [real]: 1n }, symlinks: [source, other],
+  });
+  assert.deepEqual(await identity.findDocumentAliases(source, [source, other, real], { platform: 'darwin', pathApi: path.posix, fsApi }), [source]);
+});
+
 test('rename alias lookup does not rewrite another hardlink to the same inode', async t => {
   const directory = await fs.mkdtemp(path.join(process.cwd(), '.test-rename-alias-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
@@ -67,7 +93,7 @@ test('rename alias lookup rejects malformed or oversized IPC paths before resolv
 test('rename alias lookup propagates real permission and IO failures before a rename', async () => {
   assert.equal(typeof identity.findDocumentAliases, 'function');
   for (const code of ['EACCES', 'EPERM', 'EIO']) {
-    const fsApi = { async realpath(value) { return value; }, async stat(value) {
+    const fsApi = { async lstat() { return { isSymbolicLink: () => false }; }, async realpath(value) { return value; }, async stat(value) {
       if (value === '/Notes/Plan.md') return { dev: 1n, ino: 1n };
       throw Object.assign(new Error(code), { code });
     } };

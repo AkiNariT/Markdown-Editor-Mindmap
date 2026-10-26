@@ -45,6 +45,23 @@ nativeTest('native Mac exclusive rename rejects files, directories, symlinks and
   assert.equal((await fs.readdir(directory)).length, 5);
 });
 
+nativeTest('native Mac source symlink rename leaves target and independent symlink references intact', async t => {
+  const { directory, source, document } = await fixture(t);
+  const alias = path.join(directory, 'Alias.md'), other = path.join(directory, 'other.md');
+  await fs.symlink(source, alias);
+  await fs.symlink(source, other);
+  const shortcut = path.join(directory, 'shortcut');
+  await fs.symlink(directory, shortcut, 'dir');
+  const throughParent = path.join(shortcut, 'Alias.md');
+  assert.deepEqual(await findDocumentAliases(alias, [alias, throughParent, source, other]), [alias, throughParent]);
+  const renamed = await rename(alias, 'renamed.md', document.fingerprint);
+  assert.equal(await fs.readlink(renamed), source);
+  assert.equal(await fs.readlink(other), source);
+  assert.equal(await fs.readFile(source, 'utf8'), document.content);
+  assert.equal(await fs.readFile(other, 'utf8'), document.content);
+  await assert.rejects(fs.lstat(alias), { code: 'ENOENT' });
+});
+
 nativeTest('native helper independently rejects external edits and a missing source', async t => {
   const { directory, source, document } = await fixture(t);
   const target = path.join(directory, 'new.md');
