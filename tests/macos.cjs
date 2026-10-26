@@ -88,24 +88,83 @@ async function launch(profile, files) {
   const executablePath = process.env.MOYE_EXE || require('electron');
   const args = [...(process.env.MOYE_EXE ? [] : [path.resolve(__dirname, '..')]), ...files, '--user-data-dir=' + profile];
   const app = await electron.launch({ executablePath, args, timeout: 30000 });
-  const item = { app, page: await app.firstWindow(), errors: [] }; running.add(item);
+  const item = { app, page: await app.firstWindow(), errors: [], profile, directory: path.dirname(profile) }; running.add(item);
   item.page.setDefaultTimeout(15000); item.page.on('pageerror', error => item.errors.push(error.message));
   await item.page.waitForFunction(() => document.querySelectorAll('[role=tab]').length > 0 && !document.querySelector('#mode').disabled);
   await app.evaluate(({ dialog }) => {
-    globalThis.macErrors = []; globalThis.macPrompts = [];
+    globalThis.macErrors = []; globalThis.macPrompts = []; globalThis.macMenuDispatches = [];
     dialog.showErrorBox = (_title, message) => globalThis.macErrors.push(message);
     dialog.showMessageBox = async (_window, options) => { globalThis.macPrompts.push(options.message); return { response: 2 }; };
+  });
+  await item.page.evaluate(() => {
+    window.macNativeCommandEvents = [];
+    window.moye.onCommand(command => {
+      const tab = document.querySelector('[role="tab"][aria-selected="true"]');
+      window.macNativeCommandEvents.push({ command, time: performance.now(),
+        renameDisabled: document.querySelector('#rename')?.disabled,
+        modeDisabled: document.querySelector('#mode')?.disabled,
+        activeTabId: tab?.dataset.documentId, activeTabName: tab?.getAttribute('aria-label'),
+        documentName: document.querySelector('#document-name')?.textContent,
+        dialogs: [...document.querySelectorAll('dialog[open]')].map(node => node.id) });
+      if (window.macNativeCommandEvents.length > 100) window.macNativeCommandEvents.shift();
+    });
   });
   return item;
 }
 const ready = item => item.page.evaluate(() => window.moye.ready());
 const visible = item => item.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible());
 async function command(item, name) {
+  // Main-process tab state changes before the renderer's action finally unlocks
+  // controls. Native commands are intentionally ignored while it is still busy.
+  // Keep naming dialogs eligible so Undo/Redo can exercise ordinary input history.
+  await until(() => item.page.evaluate(async () => {
+    const backend = await window.moye.ready();
+    const tab = document.querySelector('[role="tab"][aria-selected="true"]');
+    const mode = document.querySelector('#mode'), rename = document.querySelector('#rename');
+    const expectedName = backend.path?.split(/[\\/]/).pop() || backend.suggestedName;
+    const documentName = document.querySelector('#document-name')?.textContent;
+    return { interactive: Boolean(mode && rename && !mode.disabled && !rename.disabled && tab && !tab.disabled
+      && tab.dataset.documentId === backend.id
+      && (!expectedName || (tab.getAttribute('aria-label') === expectedName && documentName === expectedName))),
+      backendId: backend.id, activeTabId: tab?.dataset.documentId, expectedName, documentName,
+      activeTabName: tab?.getAttribute('aria-label'), modeDisabled: mode?.disabled, renameDisabled: rename?.disabled };
+  }), value => value.interactive, 'renderer interactive before native ' + name);
   await item.app.evaluate(({ Menu }, name) => {
     const menuItem = Menu.getApplicationMenu().getMenuItemById('md-' + name);
     if (!menuItem) throw new Error('Missing native menu command ' + name);
+    globalThis.macMenuDispatches.push({ name, id: menuItem.id, enabled: menuItem.enabled, visible: menuItem.visible });
     menuItem.click();
   }, name);
+}
+
+async function captureFailure(item, error) {
+  const state = { error: { name: error.name, message: error.message, stack: error.stack },
+    profile: item.profile, pageErrors: item.errors };
+  try {
+    state.renderer = await item.page.evaluate(() => {
+      const summarize = node => node && ({ tag: node.tagName, id: node.id, type: node.type,
+        disabled: node.disabled, readOnly: node.readOnly, hidden: node.hidden, role: node.getAttribute('role') });
+      return { title: document.title, visibility: document.visibilityState, focused: document.hasFocus(),
+        readyMarks: performance.getEntriesByName('md-document-ready', 'mark').map(mark => mark.startTime),
+        documentName: document.querySelector('#document-name')?.textContent,
+        activeElement: summarize(document.activeElement),
+        buttons: [...document.querySelectorAll('button[id], #filename')].map(summarize),
+        tabs: [...document.querySelectorAll('[role="tab"]')].map(node => ({ id: node.dataset.documentId,
+          name: node.getAttribute('aria-label'), selected: node.getAttribute('aria-selected'), disabled: node.disabled })),
+        dialogs: [...document.querySelectorAll('dialog')].map(node => ({ id: node.id, open: node.open,
+          hidden: node.hidden, display: getComputedStyle(node).display })),
+        nativeCommands: window.macNativeCommandEvents || [] };
+    });
+  } catch (failure) { state.rendererCaptureError = failure.message; }
+  try {
+    state.main = await item.app.evaluate(({ app, BrowserWindow }) => ({ profile: app.getPath('userData'),
+      windows: BrowserWindow.getAllWindows().map(window => ({ visible: window.isVisible(), focused: window.isFocused() })),
+      errors: globalThis.macErrors, prompts: globalThis.macPrompts, menuDispatches: globalThis.macMenuDispatches }));
+  } catch (failure) { state.mainCaptureError = failure.message; }
+  try { await item.page.screenshot({ path: path.join(item.directory, 'failure.png'), timeout: 5000 }); }
+  catch (failure) { state.screenshotError = failure.message; }
+  await writeFile(path.join(item.directory, 'failure-state.json'), JSON.stringify(state, null, 2) + '\n');
+  console.error('Mac smoke failure evidence: ' + item.directory);
 }
 
 (async () => {
@@ -250,7 +309,10 @@ async function command(item, name) {
     commandSave: true, packagedSafeRename: true, finderMindmapLinkedFile: true,
     hideAndReactivate: true, quitCancelAndConfirm: true }, null, 2) + '\n');
   console.log('MACOS PASS: native menus and language, Command save, source history, packaged safe rename, mind map linked file, hide/reactivate, Finder warm open, cancel Quit and confirmed Command+Q; arch=' + process.arch);
-})().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
+})().catch(async error => {
+  console.error(error); process.exitCode = 1;
+  for (const item of running) await captureFailure(item, error).catch(failure => console.error('Failure evidence could not be saved:', failure));
+}).finally(async () => {
   for (const item of running) {
     await item.app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.destroy(); }).catch(() => {});
     await item.app.close().catch(() => {});

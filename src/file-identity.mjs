@@ -40,3 +40,34 @@ export async function documentFileKey(target, { platform = process.platform, pat
     return key(pathApi.resolve(target));
   }
 }
+
+// Match references before moving the file, while aliases still resolve. Use
+// the same canonical path identity as open tabs: a separate hardlink keeps its
+// own path and must not be rebound to a name that another file has acquired.
+export async function findDocumentAliases(target, candidates, { platform = process.platform, pathApi = path, fsApi = fs } = {}) {
+  const invalid = () => Object.assign(new TypeError('Invalid document reference paths'), { code: 'INVALID_DOCUMENT_REFERENCES' });
+  if (!Array.isArray(candidates) || candidates.length > 100000) throw invalid();
+  let bytes = 0;
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || candidate.includes('\0') || !pathApi.isAbsolute(candidate)
+      || (bytes += Buffer.byteLength(candidate, 'utf8')) > 8 * 1024 * 1024) throw invalid();
+  }
+  if (!candidates.length) return [];
+  const options = { platform, pathApi, fsApi };
+  const sourceKey = await documentFileKey(target, options);
+  const unique = [...new Set(candidates)], aliases = [];
+  // Bound concurrent filesystem work even when many maps have undo history.
+  for (let index = 0; index < unique.length; index += 16) {
+    const matches = await Promise.all(unique.slice(index, index + 16).map(async candidate => {
+      try {
+        await fsApi.stat(candidate);
+        return await documentFileKey(candidate, options) === sourceKey ? candidate : null;
+      } catch (error) {
+        if (['ENOENT', 'ENOTDIR'].includes(error.code)) return null;
+        throw error;
+      }
+    }));
+    aliases.push(...matches.filter(value => value !== null));
+  }
+  return aliases;
+}

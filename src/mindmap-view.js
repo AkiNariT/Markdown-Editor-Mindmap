@@ -113,6 +113,7 @@ export function createMindmapView(initialData, options = {}) {
       ? selectedNodes.size > 1 ? t('已选 {count} 个节点 · 拖动一起移动并对齐 · Alt 暂停吸附', { count: selectedNodes.size })
         : t('Ctrl / Shift + 点击多选 · 拖动节点靠近时对齐 · Alt 暂停吸附 · 右键快捷操作')
       : t('双击节点打开文件 · 拖动空白处平移 · 右键快捷操作');
+    if (platform === 'darwin') hint.textContent = hint.textContent.replace('Ctrl / Shift', '⌘ / Shift');
   }
   function cancelConnection() { connectionSource = null; resetHint(); renderSelection(); }
   function finishText() {
@@ -977,18 +978,23 @@ export function createMindmapView(initialData, options = {}) {
     selectedConnection = connection(previous.selectedConnection) ? previous.selectedConnection : null;
     dismissDelete(); render(); changed(); return true;
   }
-  function rewriteLinks(value, oldPath, newPath) {
+  function rewriteLinks(value, oldPath, newPath, aliases = []) {
     let count = 0;
-    for (const item of value.nodes) if (item.file !== null && fileKey(item.file) === fileKey(oldPath)) { item.file = newPath; count++; }
+    const keys = new Set([oldPath, ...aliases].map(fileKey));
+    for (const item of value.nodes) if (item.file !== null && keys.has(fileKey(item.file))) { item.file = newPath; count++; }
     return count;
   }
-  function replaceFile(oldPath, newPath) {
+  function getLinkedFilePaths() {
+    const values = [data, ...undoStack.map(item => item.data), ...redoStack.map(item => item.data), ...(textBefore ? [textBefore.data] : [])];
+    return [...new Set(values.flatMap(value => value.nodes.map(item => item.file).filter(file => file !== null)))];
+  }
+  function replaceFile(oldPath, newPath, aliases = []) {
     if (!oldPath || oldPath === newPath || destroyed) return;
     cancelDrag(); closeMenu();
-    const draft = clone(data), count = rewriteLinks(draft, oldPath, newPath);
+    const draft = clone(data), count = rewriteLinks(draft, oldPath, newPath, aliases);
     try { validateMindmap(draft); } catch (error) { report(error); return; }
     data = draft;
-    for (const item of [...undoStack, ...redoStack, ...(textBefore ? [textBefore] : [])]) rewriteLinks(item.data, oldPath, newPath);
+    for (const item of [...undoStack, ...redoStack, ...(textBefore ? [textBefore] : [])]) rewriteLinks(item.data, oldPath, newPath, aliases);
     if (count) { render(); changed(); }
   }
   function refreshLabels() {
@@ -1086,7 +1092,7 @@ export function createMindmapView(initialData, options = {}) {
     refreshTheme: () => { if (!destroyed) { for (const [id, elements] of nodeElements) applyNodeAppearance(elements.card, node(id)); renderSelection(); } },
     setZoom, getZoom: () => zoom, capturePosition, restorePosition, captureSessionState, restoreSessionState,
     focus: () => canvas.focus({ preventScroll: true }),
-    undo: () => travel(undoStack, redoStack), redo: () => travel(redoStack, undoStack), replaceFile, attachFile,
+    undo: () => travel(undoStack, redoStack), redo: () => travel(redoStack, undoStack), replaceFile, getLinkedFilePaths, attachFile,
     destroy() {
       destroyed = true; unsubscribeLocale(); observer?.disconnect(); releaseDrag(); closeMenu();
       document.removeEventListener('pointerdown', outsidePointer, true);

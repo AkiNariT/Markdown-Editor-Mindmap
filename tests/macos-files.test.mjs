@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { readDocument, renameDocument } from '../src/files.mjs';
-import { documentFileKey } from '../src/file-identity.mjs';
+import { documentFileKey, findDocumentAliases } from '../src/file-identity.mjs';
 
 const nativeTest = process.platform === 'darwin' ? test : test.skip;
 const run = promisify(execFile);
@@ -90,9 +90,11 @@ nativeTest('Mac native file keys unify symlinks and case aliases but keep case-s
   const alias = path.join(directory, 'alias.md');
   await fs.symlink(upper, alias);
   assert.equal(await documentFileKey(alias), await documentFileKey(upper));
+  assert.deepEqual(await findDocumentAliases(upper, [alias]), [alias]);
   try {
     await fs.writeFile(lower, 'lower', { flag: 'wx' });
     assert.notEqual(await documentFileKey(upper), await documentFileKey(lower));
+    assert.deepEqual(await findDocumentAliases(upper, [lower, alias]), [alias]);
     const document = await readDocument(upper);
     await assert.rejects(rename(upper, 'plan.md', document.fingerprint), /已存在/);
     assert.equal(await fs.readFile(lower, 'utf8'), 'lower');
@@ -100,5 +102,6 @@ nativeTest('Mac native file keys unify symlinks and case aliases but keep case-s
     if (error.code !== 'EEXIST') throw error;
     assert.notEqual(process.env.MD_TEST_CASE_SENSITIVE, '1', 'The explicit case-sensitive run requires a case-sensitive volume');
     assert.equal(await documentFileKey(lower), await documentFileKey(upper));
+    assert.deepEqual(await findDocumentAliases(upper, [lower, alias]), [lower, alias]);
   }
 });

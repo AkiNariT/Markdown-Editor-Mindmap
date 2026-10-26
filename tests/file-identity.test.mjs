@@ -3,9 +3,17 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { documentFileKey } from '../src/file-identity.mjs';
+import * as identity from '../src/file-identity.mjs';
 
-function virtualFs({ paths, directories }) {
+function virtualFs({ paths, directories, identities = {} }) {
   return {
+    async stat(value) {
+      if (Object.hasOwn(paths, value)) {
+        assert.ok(Object.hasOwn(identities, value), `Missing fixture identity: ${value}`);
+        return { dev: 1n, ino: identities[value] };
+      }
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    },
     async realpath(value) {
       if (Object.hasOwn(paths, value)) return paths[value];
       throw Object.assign(new Error('missing'), { code: 'ENOENT' });
@@ -23,6 +31,48 @@ test('Mac file keys preserve separate case-sensitive documents', async () => {
   const options = { platform: 'darwin', pathApi: path.posix, fsApi };
   assert.equal(await documentFileKey('/Notes/A.md', options), '/Notes/A.md');
   assert.equal(await documentFileKey('/Notes/a.md', options), '/Notes/a.md');
+});
+
+test('rename alias lookup resolves existing aliases on an insensitive Mac volume and ignores missing links', async () => {
+  assert.equal(typeof identity.findDocumentAliases, 'function');
+  const fsApi = virtualFs({ paths: { '/Notes/Plan.md': '/Notes/Plan.md', '/notes/plan.md': '/notes/plan.md', '/alias.md': '/Notes/Plan.md', '/Notes/other.md': '/Notes/other.md' }, directories: { '/': ['Notes'], '/Notes': ['Plan.md', 'other.md'] }, identities: { '/Notes/Plan.md': 1n, '/notes/plan.md': 1n, '/alias.md': 1n, '/Notes/other.md': 2n } });
+  const aliases = await identity.findDocumentAliases('/Notes/Plan.md', ['/notes/plan.md', '/alias.md', '/notes/plan.md', '/Notes/other.md', '/Notes/missing.md'], { platform: 'darwin', pathApi: path.posix, fsApi });
+  assert.deepEqual(aliases, ['/notes/plan.md', '/alias.md']);
+});
+
+test('rename alias lookup keeps case-sensitive Mac files separate', async () => {
+  assert.equal(typeof identity.findDocumentAliases, 'function');
+  const fsApi = virtualFs({ paths: { '/Notes/Plan.md': '/Notes/Plan.md', '/Notes/plan.md': '/Notes/plan.md', '/alias.md': '/Notes/Plan.md' }, directories: { '/': ['Notes'], '/Notes': ['Plan.md', 'plan.md'] }, identities: { '/Notes/Plan.md': 1n, '/Notes/plan.md': 2n, '/alias.md': 1n } });
+  assert.deepEqual(await identity.findDocumentAliases('/Notes/Plan.md', ['/Notes/plan.md', '/alias.md'], { platform: 'darwin', pathApi: path.posix, fsApi }), ['/alias.md']);
+});
+
+test('rename alias lookup does not rewrite another hardlink to the same inode', async t => {
+  const directory = await fs.mkdtemp(path.join(process.cwd(), '.test-rename-alias-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const source = path.join(directory, 'Plan.md'), otherLink = path.join(directory, 'other.md');
+  await fs.writeFile(source, 'linked content');
+  await fs.link(source, otherLink);
+  const sourceStat = await fs.stat(source, { bigint: true }), otherStat = await fs.stat(otherLink, { bigint: true });
+  assert.equal(sourceStat.ino, otherStat.ino);
+  assert.deepEqual(await identity.findDocumentAliases(source, [source, otherLink]), [source]);
+});
+
+test('rename alias lookup rejects malformed or oversized IPC paths before resolving files', async () => {
+  assert.equal(typeof identity.findDocumentAliases, 'function');
+  for (const candidates of [null, {}, [null], ['relative.md'], ['/bad\u0000.md'], ['/x'.repeat(4 * 1024 * 1024 + 1)], Array(100001).fill('/x.md')]) {
+    await assert.rejects(identity.findDocumentAliases('/Notes/Plan.md', candidates, { pathApi: path.posix }), { code: 'INVALID_DOCUMENT_REFERENCES' });
+  }
+});
+
+test('rename alias lookup propagates real permission and IO failures before a rename', async () => {
+  assert.equal(typeof identity.findDocumentAliases, 'function');
+  for (const code of ['EACCES', 'EPERM', 'EIO']) {
+    const fsApi = { async realpath(value) { return value; }, async stat(value) {
+      if (value === '/Notes/Plan.md') return { dev: 1n, ino: 1n };
+      throw Object.assign(new Error(code), { code });
+    } };
+    await assert.rejects(identity.findDocumentAliases('/Notes/Plan.md', ['/Notes/plan.md'], { platform: 'win32', pathApi: path.posix, fsApi }), { code });
+  }
 });
 
 test('Mac file keys collapse case aliases using the actual directory spelling', async () => {

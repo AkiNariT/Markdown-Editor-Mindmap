@@ -738,6 +738,59 @@ const caseSensitiveLinks = () => {
 };
 const linkedPaths = view => view.getData().nodes.slice(0, 2).map(node => node.file);
 
+test('Mac rename applies only filesystem-verified aliases to the current links', () => {
+  const data = caseSensitiveLinks(); data.nodes[2].file = '/notes/PLAN.md';
+  const state = setup(data, { platform: 'darwin' });
+  try {
+    state.view.replaceFile('/notes/Plan.md', '/notes/Renamed.md', ['/notes/plan.md']);
+    assert.deepEqual(state.view.getData().nodes.map(node => node.file), ['/notes/Renamed.md', '/notes/Renamed.md', '/notes/PLAN.md']);
+  } finally { state.close(); }
+});
+
+test('rename gathers unique links from current data plus undo and redo snapshots without changing history', () => {
+  const state = setup(caseSensitiveLinks(), { platform: 'darwin' });
+  const { view } = state;
+  try {
+    button(view, '取消关联').click();
+    assert.equal(view.attachFile('root', '/notes/other.md'), true);
+    nodeButton(view, 'a').click();
+    button(view, '取消关联').click();
+    assert.equal(view.attachFile('a', '/notes/future.md'), true);
+    view.undo();
+    const before = view.getText(), changes = state.changes.length;
+    assert.equal(typeof view.getLinkedFilePaths, 'function');
+    assert.deepEqual(view.getLinkedFilePaths().sort(), ['/notes/Plan.md', '/notes/future.md', '/notes/other.md', '/notes/plan.md']);
+    assert.equal(view.getText(), before); assert.equal(state.changes.length, changes);
+    assert.equal(view.redo(), true);
+    assert.deepEqual(linkedPaths(view), ['/notes/other.md', '/notes/future.md']);
+  } finally { state.close(); }
+});
+
+for (const history of ['undo', 'redo']) {
+  test(`Mac rename updates a verified alias present only in ${history} history`, () => {
+    const data = base(); data.nodes[0].file = history === 'undo' ? '/notes/plan.md' : null;
+    const state = setup(data, { platform: 'darwin' });
+    const { view } = state;
+    try {
+      if (history === 'undo') button(view, '取消关联').click();
+      else { assert.equal(view.attachFile('root', '/notes/plan.md'), true); assert.equal(view.undo(), true); }
+      const before = view.getText(), changes = state.changes.length;
+      view.replaceFile('/notes/Plan.md', '/notes/Renamed.md', ['/notes/plan.md']);
+      assert.equal(view.getText(), before); assert.equal(state.changes.length, changes);
+      assert.equal(view[history](), true);
+      assert.equal(view.getData().nodes[0].file, '/notes/Renamed.md');
+    } finally { state.close(); }
+  });
+}
+
+test('Mac selection hint uses Command while Windows retains Control', () => {
+  const mac = setup(base(), { platform: 'darwin' }), windows = setup(base(), { platform: 'win32' });
+  try {
+    assert.match(mac.view.host.querySelector('.mindmap-hint').textContent, /⌘ \/ Shift/);
+    assert.match(windows.view.host.querySelector('.mindmap-hint').textContent, /Ctrl \/ Shift/);
+  } finally { mac.close(); windows.close(); }
+});
+
 test('Mac rename updates only the matching case-sensitive link across open maps', () => {
   const matching = setup(caseSensitiveLinks(), { platform: 'darwin' });
   const unrelatedData = base(); unrelatedData.nodes[0].file = '/notes/plan.md';

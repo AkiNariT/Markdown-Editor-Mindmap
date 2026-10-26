@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('moye', {
   chooseMindmapFile: () => invoke('mindmap-choose-file'),
   createMindmapFile: (id, content, nodeId) => invoke('mindmap-create-file', id, content, nodeId),
   openMindmapFile: (id, content, nodeId, created = false) => invoke('mindmap-open-file', id, content, nodeId, Boolean(created)),
-  renameDocument: (id, name) => invoke('rename', id, name),
+  renameDocument: (id, name, linkedPaths = []) => invoke('rename', id, name, linkedPaths),
   cacheSource: (id, content) => invoke('preview', id, content),
   insertImage: () => invoke('image'), confirmEdit: (sourceMode = false) => invoke('edit', Boolean(sourceMode)),
   setDirty: (id, value, visualLossy = false) => ipcRenderer.send('moye:dirty', id, Boolean(value), Boolean(visualLossy)),

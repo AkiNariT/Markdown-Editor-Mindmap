@@ -6,7 +6,7 @@ const { pathToFileURL, fileURLToPath } = require('node:url');
 const { applicationLaunchContext, secondInstanceWorkingDirectory } = require('../src/application-launch.mjs');
 const { createMacLifecycle } = require('../src/macos-lifecycle.mjs');
 const { createMacMenuTemplate } = require('../src/macos-menu.mjs');
-const { documentFileKey } = require('../src/file-identity.mjs');
+const { documentFileKey, findDocumentAliases } = require('../src/file-identity.mjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'moye-image', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const dataArg = process.argv.find(arg => arg.startsWith('--user-data-dir='));
@@ -214,21 +214,29 @@ async function guardUnsaved(document = doc, discarded) {
   return true;
 }
 const fileKey = documentFileKey;
-async function renameDocument(id, requestedName) {
+async function renameDocument(id, requestedName, linkedPaths = []) {
   const record = documents.get(id); if (!record) throw new Error(t('文档标签已关闭。'));
   const extension = record.type === 'mindmap' ? 'mdmap' : 'md';
   const name = files.normalizeDocumentName(requestedName, extension);
   const renamedFrom = record.path;
+  let renamedAliases = [];
   const skillDocument = record.type !== 'mindmap' && Boolean(isSkillDocument(record) || name.toLowerCase() === 'skill.md');
   if (record.path) {
     const target = path.join(path.dirname(record.path), name), key = await fileKey(target);
     if ([...documents.values()].some(value => value.id !== id && value.fileKey === key)) throw new Error(t('这个文件名已在另一个标签打开，请选择其他名称。'));
+    if (process.platform === 'darwin' && record.type !== 'mindmap') {
+      try { renamedAliases = await findDocumentAliases(record.path, linkedPaths); }
+      catch (error) {
+        if (error.code === 'INVALID_DOCUMENT_REFERENCES') throw new Error(t('文档内容无效。'));
+        throw error;
+      }
+    }
     const renamed = await files.renameDocument(record.path, name, record.fingerprint, extension);
     Object.assign(record, { path: renamed, fileKey: await fileKey(renamed), skillDocument });
   } else Object.assign(record, { suggestedName: name, namedDraft: true, skillDocument });
   if (record === doc) updateTitle();
   await persistSession();
-  return { ...payload(record), renamedFrom };
+  return { ...payload(record), renamedFrom, renamedAliases };
 }
 async function readOpenedDocument(target) {
   const value = await files.readDocument(path.resolve(target));

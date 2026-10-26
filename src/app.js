@@ -525,7 +525,7 @@ function showNameDialog() {
 function applyRenamed(result) {
   stashActive(); const state = sessions.get(result.id); if (!state) return;
   if (result.renamedFrom && !isMindmap(result)) {
-    for (const target of sessions.values()) target.map?.replaceFile(result.renamedFrom, result.path);
+    for (const target of sessions.values()) target.map?.replaceFile(result.renamedFrom, result.path, result.renamedAliases);
   }
   if (state.map) {
     state.current = { ...state.current, ...result }; if (result.tabs) tabOrder = result.tabs;
@@ -557,7 +557,8 @@ $('name-form').addEventListener('submit', event => {
   event.preventDefault(); if (working || closing) return;
   action(async () => {
     try {
-      const result = unpack(await api.renameDocument(namingId, $('filename').value));
+      const linkedPaths = platform === 'darwin' ? [...new Set([...sessions.values()].flatMap(state => state.map?.getLinkedFilePaths() || []))] : [];
+      const result = unpack(await api.renameDocument(namingId, $('filename').value, linkedPaths));
       applyRenamed(result); $('name-dialog').close(); toast(result.path ? t('文件已重命名') : t('已命名，保存时将沿用此名称'));
     } catch (error) { $('name-error').textContent = error.message; $('name-error').hidden = false; }
   });
