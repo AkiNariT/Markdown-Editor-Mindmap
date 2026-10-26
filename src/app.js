@@ -11,10 +11,13 @@ import { captureReadingPosition, restoreReadingPosition } from './zoom.mjs';
 import { createCheckpointController } from './checkpoint.mjs';
 import { createUpdatesUI } from './updates-ui.js';
 import { createWindowsDefaultUI } from './windows-default-ui.mjs';
+import { createPlatformUI, createNativeCommandHandler } from './platform-ui.mjs';
 import { t, setLocale, getLocale, onLocaleChange } from './i18n.mjs';
 
 const $ = id => document.getElementById(id);
 const api = window.moye;
+const platform = api.platform || 'win32';
+const platformUI = createPlatformUI({ document, platform });
 const updates = createUpdatesUI({ api, t, document });
 let editor, current, baseline = '', baselineMetadata = '', documentParts, dirty = false, editing = false, working = false, closing = false, loaded = false, toastTimer;
 let linkSelection;
@@ -38,6 +41,7 @@ function applyStaticTranslations() {
     }
   }
   $('language-select').value = getLocale();
+  platformUI.refresh();
 }
 function refreshLanguage() {
   const state = sessions.get(current?.id), canvas = document.querySelector('.canvas');
@@ -190,6 +194,7 @@ function createSession(value, mountEditor = false) {
   if (isMindmap(value)) {
     const state = { current: value, dirty: false, editing: Boolean(value.editable), zoom: 100, view: 'mindmap' };
     state.map = createMindmapView(value.mapData, {
+      platform,
       onChange: () => {
         state.dirty = state.map.getText() !== state.baselineMap;
         api.setDirty(state.current.id, state.dirty);
@@ -520,7 +525,7 @@ function showNameDialog() {
 function applyRenamed(result) {
   stashActive(); const state = sessions.get(result.id); if (!state) return;
   if (result.renamedFrom && !isMindmap(result)) {
-    for (const target of sessions.values()) target.map?.replaceFile(result.renamedFrom, result.path);
+    for (const target of sessions.values()) target.map?.replaceFile(result.renamedFrom, result.path, result.renamedAliases);
   }
   if (state.map) {
     state.current = { ...state.current, ...result }; if (result.tabs) tabOrder = result.tabs;
@@ -552,7 +557,8 @@ $('name-form').addEventListener('submit', event => {
   event.preventDefault(); if (working || closing) return;
   action(async () => {
     try {
-      const result = unpack(await api.renameDocument(namingId, $('filename').value));
+      const linkedPaths = platform === 'darwin' ? [...new Set([...sessions.values()].flatMap(state => state.map?.getLinkedFilePaths() || []))] : [];
+      const result = unpack(await api.renameDocument(namingId, $('filename').value, linkedPaths));
       applyRenamed(result); $('name-dialog').close(); toast(result.path ? t('文件已重命名') : t('已命名，保存时将沿用此名称'));
     } catch (error) { $('name-error').textContent = error.message; $('name-error').hidden = false; }
   });
@@ -810,7 +816,7 @@ $('document-tabs').addEventListener('keydown', event => {
 $('editor').addEventListener('click', event => {
   const link = event.target.closest('a'); if (!link) return;
   event.preventDefault();
-  if (!editing || event.ctrlKey) { if (safeLink(link.getAttribute('href'))) api.openLink(link.getAttribute('href')).then(unpack).catch(error => toast(error.message, true)); }
+  if (!editing || event.ctrlKey || event.metaKey) { if (safeLink(link.getAttribute('href'))) api.openLink(link.getAttribute('href')).then(unpack).catch(error => toast(error.message, true)); }
 });
 document.querySelector('.canvas').addEventListener('scroll', () => { updateSelection(); if (loaded) syncScroll('preview'); });
 document.addEventListener('selectionchange', updateSelection);
@@ -843,6 +849,23 @@ api.onClosed(({ id, document }) => {
   if (current?.id === id) { current = null; editor = undefined; loaded = false; loadDocument(document); }
   else { tabOrder = document.tabs; renderTabs(); }
 });
+api.onCommand(createNativeCommandHandler({
+  document,
+  canAct: () => loaded && !working && !closing && !hasComposition(),
+  history: historyCommand,
+  nativeHistory: name => document.execCommand(name),
+  actions: {
+    new: () => $('new').click(),
+    'new-mindmap': () => $('new-mindmap').click(),
+    open: () => $('open').click(),
+    save: () => $('save').click(),
+    'save-as': () => $('save-as').click(),
+    'close-tab': () => action(async () => unpack(await api.closeTab(current.id))),
+    settings: () => $('settings').click(),
+    'check-updates': () => $('check-updates').click(),
+    help: () => $('about').click(),
+  },
+}));
 onLocaleChange(refreshLanguage);
 function markDocumentReady() {
   // Record the rendered document independently of a benchmark's CDP attach

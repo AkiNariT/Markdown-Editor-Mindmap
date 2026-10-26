@@ -30,6 +30,7 @@ function jsonResponse(value, options = {}) {
 
 test('finds a public preview with a downloadable Windows package', async () => {
   const checker = createUpdateChecker({
+    platform: 'win32', arch: 'x64',
     currentVersion: '0.1.22',
     fetchImpl: async () => jsonResponse([release()]),
   });
@@ -49,11 +50,50 @@ test('finds a public preview with a downloadable Windows package', async () => {
 
 function checkerFor(releases, options = {}) {
   return createUpdateChecker({
+    platform: 'win32', arch: 'x64',
     currentVersion: '0.1.22',
     fetchImpl: async () => jsonResponse(releases),
     ...options,
   });
 }
+
+function platformRelease(tag, platform, arch) {
+  const candidate = release(tag);
+  const filename = `MD-${platform}-${arch}-${tag.replace(/^v/, '')}.zip`;
+  candidate.assets[0].name = filename;
+  candidate.assets[0].browser_download_url = `${repository}/releases/download/${tag}/${filename}`;
+  return candidate;
+}
+
+for (const [platform, arch, expectedVersion] of [['win32', 'x64', '0.1.23'], ['darwin', 'arm64', '0.1.24'], ['darwin', 'x64', '0.1.25']]) {
+  test(`update selection requires an uploaded package for ${platform}/${arch}`, async () => {
+    const result = await checkerFor([
+      platformRelease('v0.1.23', 'Windows', 'x64'),
+      platformRelease('v0.1.24', 'macOS', 'arm64'),
+      platformRelease('v0.1.25', 'macOS', 'x64'),
+    ], { platform, arch }).check();
+    assert.equal(result.status, 'available');
+    assert.equal(result.release.version, expectedVersion);
+  });
+}
+
+test('Mac checker never offers Windows or a different Mac architecture package', async () => {
+  const result = await checkerFor([release(), platformRelease('v0.1.24', 'macOS', 'x64')], { platform: 'darwin', arch: 'arm64' }).check();
+  assert.equal(result.status, 'unpublished');
+  assert.equal(result.release, null);
+});
+
+test('unknown platform and architecture never fall back to Windows downloads', async () => {
+  for (const [platform, arch] of [['linux', 'x64'], ['win32', 'arm64'], ['darwin', 'ia32']]) {
+    assert.equal((await checkerFor([release()], { platform, arch }).check()).status, 'unpublished');
+  }
+});
+
+test('Mac package still requires an official matching download URL', async () => {
+  const candidate = platformRelease('v0.1.24', 'macOS', 'arm64');
+  candidate.assets[0].browser_download_url = 'https://example.com/MD-macOS-arm64-0.1.24.zip';
+  await assert.rejects(checkerFor([candidate], { platform: 'darwin', arch: 'arm64' }).check(), /UPDATE_RESPONSE/);
+});
 
 test('requests only the fixed public endpoint without credentials or redirects', async () => {
   let request;

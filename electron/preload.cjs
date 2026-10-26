@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const invoke = (name, ...args) => ipcRenderer.invoke('moye:' + name, ...args);
 const listen = (name, callback) => { const handler = (_, value) => callback(value); ipcRenderer.on('moye:' + name, handler); return () => ipcRenderer.removeListener('moye:' + name, handler); };
 contextBridge.exposeInMainWorld('moye', {
+  platform: process.platform, arch: process.arch,
   getSettings: () => invoke('get-settings'), setLanguage: language => invoke('set-language', language),
   getAppInfo: () => invoke('get-app-info'), checkUpdate: () => invoke('check-update'), openReleasePage: () => invoke('open-release-page'),
   setWindowsDefaultApp: () => invoke('windows-default-app'),
@@ -19,7 +20,7 @@ contextBridge.exposeInMainWorld('moye', {
   chooseMindmapFile: () => invoke('mindmap-choose-file'),
   createMindmapFile: (id, content, nodeId) => invoke('mindmap-create-file', id, content, nodeId),
   openMindmapFile: (id, content, nodeId, created = false) => invoke('mindmap-open-file', id, content, nodeId, Boolean(created)),
-  renameDocument: (id, name) => invoke('rename', id, name),
+  renameDocument: (id, name, linkedPaths = []) => invoke('rename', id, name, linkedPaths),
   cacheSource: (id, content) => invoke('preview', id, content),
   insertImage: () => invoke('image'), confirmEdit: (sourceMode = false) => invoke('edit', Boolean(sourceMode)),
   setDirty: (id, value, visualLossy = false) => ipcRenderer.send('moye:dirty', id, Boolean(value), Boolean(visualLossy)),

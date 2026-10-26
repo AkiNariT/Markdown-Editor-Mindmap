@@ -5,6 +5,8 @@
 /.packaged/
 /release-assets/
 /outputs/
+/build/
+*.dmg
 /docs/superpowers/
 /docs/design.txt
 /.codex/

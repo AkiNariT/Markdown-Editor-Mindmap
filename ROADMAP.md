@@ -12,11 +12,11 @@
 
 ## macOS 版本
 
-**状态：已列入计划，尚未发布可下载版本。**
+**状态：0.1.31 预览构建已通过 Apple Silicon 与 Intel 的原生自动化，等待个人 Mac 试用；公开下载以 Releases 附件为准。**
 
-macOS 适配需要检查文件打开、保存与重命名、图片与导图关联、窗口和快捷键等平台行为，并在 Mac 环境中进行实际验证。打包、分发方式和签名相关方案也需要单独确认。
+适配范围包括 Finder 打开、原生菜单、Command 快捷键、安全重命名、窗口隐藏与退出保护，以及 Apple 芯片和 Intel 的独立 DMG/ZIP。最低 macOS 13；原生自动化使用 macOS 15。具体操作与限制见 [Mac 说明](docs/MACOS.md)，执行结果以对应构建日志为准。
 
-目前不承诺发布日期。支持的最低 macOS 版本，以及 Apple Silicon／Intel 的支持范围，会根据实际适配和验证结果公布。
+当前使用 ad-hoc 签名。Apple Developer ID 签名、公证及更多实际设备验证仍是后续工作，尚无确认日期。
 
 ## 参与反馈
 
@@ -28,6 +28,6 @@ macOS 适配需要检查文件打开、保存与重命名、图片与导图关�
 
 MD will continue improving its existing Markdown editing, mindmap, file-protection, recovery, performance and language features.
 
-**A macOS version is planned, but no Mac build is currently available.** Platform-specific file operations, window behavior, keyboard shortcuts, packaging and distribution need adaptation and testing on Mac hardware. There is no committed release date. Minimum macOS requirements and Apple Silicon/Intel support will be announced after validation.
+**The 0.1.31 macOS preview has passed native automation on Apple Silicon and Intel and is ready for personal-device testing.** It targets macOS 13+ with native automation on macOS 15. Public availability depends on actual Releases assets. See [the Mac guide](docs/MACOS.md) and [validation record](docs/VALIDATION-0.1.31-MACOS.md). Developer ID signing, notarization and broader device validation remain planned without a committed date.
 
 Actual changes belong in the changelog and published versions in Releases. Planned work is not a claim of current support.

@@ -13,7 +13,9 @@ function context(overrides = {}) {
 
 test('a copied or renamed single-file app exposes the durable launcher and original document directory', () => {
   assert.deepEqual(context(), { executablePath: launcher, runtimeExecutablePath: runtime, cwd, portable: true });
-  assert.deepEqual(parseOpenArguments(['笔记.md', '导图.mdmap'], context().cwd), ['C:\\文档\\正在阅读\\笔记.md', 'C:\\文档\\正在阅读\\导图.mdmap']);
+  // Argument resolution uses the host filesystem; this fixture models the
+  // Windows-only portable launcher, whose paths have no meaning on macOS.
+  if (process.platform === 'win32') assert.deepEqual(parseOpenArguments(['笔记.md', '导图.mdmap'], context().cwd), ['C:\\文档\\正在阅读\\笔记.md', 'C:\\文档\\正在阅读\\导图.mdmap']);
 });
 
 test('ordinary directory packages and development ignore portable-only variables', () => {
@@ -41,7 +43,8 @@ test('malformed launcher metadata never exposes the temporary runtime for persis
 test('each second instance carries its own original directory rather than the first launcher directory', () => {
   const next = context({ env: { ...env, MD_PORTABLE_CWD: 'D:\\另一个目录' } });
   const received = secondInstanceWorkingDirectory({ cwd: next.cwd }, 'C:\\Temp\\second-runtime', 'win32');
-  assert.deepEqual(parseOpenArguments(['第二份.md'], received), ['D:\\另一个目录\\第二份.md']);
+  assert.equal(received, 'D:\\另一个目录');
+  if (process.platform === 'win32') assert.deepEqual(parseOpenArguments(['第二份.md'], received), ['D:\\另一个目录\\第二份.md']);
   for (const value of [null, {}, { cwd: 'relative' }, { cwd: 'C:\\bad\npath' }, { cwd: '\\drive-relative' }]) {
     assert.equal(secondInstanceWorkingDirectory(value, 'C:\\fallback', 'win32'), 'C:\\fallback');
   }

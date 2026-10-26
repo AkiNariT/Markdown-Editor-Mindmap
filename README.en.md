@@ -38,7 +38,11 @@ The single-file version registers the outer EXE that you saved. Copy program pat
 
 To check for updates, open **More (…) → Check for updates** or **Settings → Check for updates**, then click the check button in the dialog. This manually retrieves public releases from this repository, including public prereleases, and shows your version, the newest compatible Windows x64 version and plain-text release notes. The release-page button opens a verified official release page in your browser. Download and upgrade using the steps above. MD does not check automatically in the background or automatically download, install or restart. Close the dialog to continue editing and saving documents.
 
-**A macOS version is planned; no Mac download is currently available.** Work will continue on the existing features alongside macOS adaptation and testing on Mac hardware. Supported macOS versions, chip architectures and a release date will be announced after validation. See the [roadmap](ROADMAP.md).
+
+
+## macOS preview
+
+This branch adds **macOS 13+, Apple Silicon (arm64) and Intel (x64)** support with separate builds. It includes Finder file opening, native menus, Command shortcuts, retaining the workspace when its window is closed, Dock reactivation, safe renaming and architecture-specific update checks. Workflow artifacts are test builds; public availability depends on actual release assets. Mac previews are ad-hoc signed, without Apple Developer ID signing or notarization. See the [Mac guide](docs/MACOS.md) for installation and validation scope.
 
 ## Features
 

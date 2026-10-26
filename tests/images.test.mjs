@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rebaseImages } from '../src/images.mjs';
+import path from 'node:path';
+
+test('Mac Save As rebases images between distinct directories differing only by case', () => {
+  assert.equal(rebaseImages('![图](assets/pic.png)', '/notes/Plan', '/notes/plan', { platform: 'darwin', pathApi: path.posix }), '![图](../Plan/assets/pic.png)');
+});
+
+test('Windows Save As retains the existing case-insensitive directory comparison', () => {
+  assert.equal(rebaseImages('![图](pic.png)', 'C:/notes/Plan', 'c:/notes/plan', { platform: 'win32', pathApi: path.win32 }), '![图](pic.png)');
+});
 test('Save As rebases inline destination without replacing matching alt text', () => {
   assert.equal(rebaseImages('![pic.png](pic.png)\n', 'C:/notes', 'C:/notes/copy'), '![pic.png](../pic.png)\n');
 });
