@@ -2,15 +2,17 @@
 
 Markdown-Editor-Mindmap (MD) is a minimal desktop Markdown reader and editor with visual editing, source/split views, and mindmaps linked to local Markdown files.
 
-[简体中文](README.md) · [Download 0.1.30](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
+[简体中文](README.md) · [Windows 0.1.30 public release](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
-**New in 0.1.30:** Fixes roots, branches and selected groups getting stuck at canvas edges, and inconsistent bends in orthogonal lines to aligned nodes. The canvas expands during dragging, children follow, and obstacle avoidance remains. Unpressed mouse movement no longer affects a drag. The canvas and SVG/PNG/PDF exports share the corrected routing. See the [changelog](CHANGELOG.md) and [validation record](docs/VALIDATION-0.1.30.md).
+**Current branch: Windows 0.1.32 local test build, not yet published to GitHub.** Based on Windows 0.1.30, it adds Ctrl+V screenshot/image paste and image-file drop in Markdown Edit mode. PNG, JPEG, GIF and WebP are supported: up to 10 images per import, 20 MiB per image and 50 MiB per batch. Drafts can contain images before their first save; saving creates an adjacent `.assets` folder. Share that folder with the `.md` file. Images stay local and are not uploaded. See the [image-paste guide](docs/IMAGE-PASTE.md). The 0.1.30 downloads below do not include this feature.
+
+**Previously released in Windows 0.1.30:** Fixes roots, branches and selected groups getting stuck at canvas edges, and inconsistent bends in orthogonal lines to aligned nodes. The canvas expands during dragging, children follow, and obstacle avoidance remains. Unpressed mouse movement no longer affects a drag. The canvas and SVG/PNG/PDF exports share the corrected routing. See the [changelog](CHANGELOG.md) and [validation record](docs/VALIDATION-0.1.30.md).
 
 ## Development approach
 
 This project is developed primarily with AI tools.
 
-## Download
+## Published Windows 0.1.30 downloads
 
 ### Recommended: single-file EXE
 
@@ -30,7 +32,7 @@ Settings and draft backups remain in `%APPDATA%\MD` for the current Windows user
 
 Extract the whole archive and run `MD.exe`. Keep the application folder intact: the `MD.exe` inside a folder ZIP needs its accompanying files and cannot be copied on its own. For an upgrade, extract the new version to a separate folder, save your work and close the previous version normally, then run the new executable. Run only one instance with the same user data. Node.js is not required to use the download.
 
-The current download, **0.1.30, is a public preview**. Windows 10/11 x64 are the targets; existing desktop validation uses Windows 11 x64. A separate Windows 10 machine has not been tested. The portable builds are unsigned and have no installer. See the [validation record](docs/VALIDATION-0.1.30.md) for this release's actual checks and limitations. The [0.1.30 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) provides six assets: the single-file EXE, complete folder ZIP, source ZIP, `SKILL.md`, `SKILL.en.md` and `SHA256SUMS.txt`.
+The current download, **0.1.30, is a public preview**. Windows 10/11 x64 are the targets; existing desktop validation uses Windows 11 x64. A separate Windows 10 machine has not been tested. The portable builds are unsigned and have no installer. See the [historical validation record](docs/VALIDATION-0.1.30.md) for 0.1.30 checks and limitations; it does not establish that 0.1.32 has passed the same checks. The [0.1.30 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) provides six assets: the single-file EXE, complete folder ZIP, source ZIP, `SKILL.md`, `SKILL.en.md` and `SHA256SUMS.txt`.
 
 Default app: Open **More (…) → Settings → Set default app** to register the current application locally and open Windows Settings, then choose MD for `.md` and `.markdown`. If registration fails, use Open Windows Settings to continue manually. Copy program path supplies the path for the system file picker, and View error details shows the cause and error code. Windows confirms the final default selection. Repeat this from the new location after upgrading, moving or renaming the application.
 
@@ -38,11 +40,12 @@ The single-file version registers the outer EXE that you saved. Copy program pat
 
 To check for updates, open **More (…) → Check for updates** or **Settings → Check for updates**, then click the check button in the dialog. This manually retrieves public releases from this repository, including public prereleases, and shows your version, the newest compatible Windows x64 version and plain-text release notes. The release-page button opens a verified official release page in your browser. Download and upgrade using the steps above. MD does not check automatically in the background or automatically download, install or restart. Close the dialog to continue editing and saving documents.
 
-**A macOS version is planned; no Mac download is currently available.** Work will continue on the existing features alongside macOS adaptation and testing on Mac hardware. Supported macOS versions, chip architectures and a release date will be announced after validation. See the [roadmap](ROADMAP.md).
+**A separate branch has published a 0.1.31 macOS preview; it has not been tested on Mac hardware.** This 0.1.32 branch is based on Windows 0.1.30 and is a Windows local test build. Mac compatibility has not been verified.
 
 ## Features
 
 - Read and edit formatted Markdown, including headings, lists, tasks, quotes, tables, images and highlighted code blocks.
+- In Edit mode, paste screenshots or drop local images, including before a draft’s first save; saving manages the adjacent `.assets` folder.
 - Edit source and formatted content together in Split view, with shared undo/redo.
 - Keep multiple documents, individual reading positions, zoom and unsaved changes.
 - Create mindmap nodes, use drag alignment guides, move multiple selected nodes, route connections around nodes, add labeled relationships, apply fixed palettes and choose six whole-map styles.
@@ -83,4 +86,4 @@ npm run package
 npm run package:portable
 ```
 
-`npm run package` produces the folder build in `.packaged/MD-win32-x64`; `npm run package:portable` builds that folder and then `.packaged/portable/MD-Windows-x64-VERSION.exe`. Initial dependency installation/builds may download runtimes and packaging tools. The finished single-file app does not download runtime components when launched. Read [CONTRIBUTING.md](CONTRIBUTING.md), [release maintenance](docs/RELEASING.md), [0.1.30 validation](docs/VALIDATION-0.1.30.md) and [security reporting](SECURITY.md) before contributing.
+`npm run package` produces the folder build in `.packaged/MD-win32-x64`; `npm run package:portable` builds that folder and then `.packaged/portable/MD-Windows-x64-VERSION.exe`. Initial dependency installation/builds may download runtimes and packaging tools. The finished single-file app does not download runtime components when launched. Read [CONTRIBUTING.md](CONTRIBUTING.md), [release maintenance](docs/RELEASING.md), [historical 0.1.30 validation](docs/VALIDATION-0.1.30.md) and [security reporting](SECURITY.md) before contributing.

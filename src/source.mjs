@@ -83,6 +83,17 @@ export function createSourceEditor(onInput) {
   refresh();
   return { host, input, refresh,
     destroy: unsubscribeLocale,
+    replaceSelection(text, { start = input.selectionStart, end = input.selectionEnd } = {}) {
+      const previous = snapshot();
+      // The caller owns edit permissions; an import may finish under a temporary read-only lock.
+      input.setRangeText(text, start, end, 'end');
+      input.scrollTop = previous.scrollLine * lineHeight(); input.scrollLeft = previous.left;
+      const changed = input.value !== previous.text;
+      if (changed) { push(undoStack, previous); redoStack.length = 0; }
+      before = group = undefined; current = snapshot(); refresh();
+      if (changed) onInput(context);
+      return changed;
+    },
     closeGroup: () => { if (!visualComposing) group = undefined; },
     beginVisualComposition: () => { group = undefined; visualComposing = true; },
     endVisualComposition: () => { visualComposing = false; if (group) group.time = performance.now(); },

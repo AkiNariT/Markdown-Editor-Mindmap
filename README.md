@@ -4,15 +4,17 @@
 
 Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读与编辑器。直接编辑排版后的文字，也可以查看源码、双向对照，并用思维导图连接本地 Markdown 文件。
 
-[English](README.en.md) · [下载 0.1.30](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
+[English](README.en.md) · [Windows 0.1.30 公开版](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) · [更新记录](CHANGELOG.md) · [开发计划](ROADMAP.md) · [使用说明](README.txt)
 
-**0.1.30 更新：** 修复主节点、分支和多选节点在画布边缘拖不动，以及同列节点的直角连线错位。拖动时画布自动扩展，保留子节点跟随与连线避让；鼠标悬停不再被误当作拖动。画布与 SVG／PNG／PDF 导出使用相同的路由。详见 [更新记录](CHANGELOG.md) 与 [验证记录](docs/VALIDATION-0.1.30.md)。
+**当前分支：0.1.32 Windows 本地测试版，尚未发布到 GitHub。** 基于 Windows 0.1.30，新增在 Markdown 编辑模式中 Ctrl+V 粘贴截图或拖入图片。支持 PNG、JPEG、GIF、WebP，一次最多 10 张、单张 20 MiB、合计 50 MiB。草稿可先插图再保存；首次保存自动建立同名 `.assets` 文件夹，分享时与 `.md` 一并提供。图片保存在本机，不上传。详见 [图片粘贴与拖入说明](docs/IMAGE-PASTE.md)。下方 0.1.30 下载包不含此新功能。
+
+**此前 Windows 0.1.30 更新：** 修复主节点、分支和多选节点在画布边缘拖不动，以及同列节点的直角连线错位。拖动时画布自动扩展，保留子节点跟随与连线避让；鼠标悬停不再被误当作拖动。画布与 SVG／PNG／PDF 导出使用相同的路由。详见 [更新记录](CHANGELOG.md) 与 [验证记录](docs/VALIDATION-0.1.30.md)。
 
 ## 开发方式
 
 本项目主要借助 AI 工具开发。
 
-## 下载与运行
+## 已发布的 Windows 0.1.30 下载与运行
 
 ### 推荐：单文件版
 
@@ -34,7 +36,7 @@ Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读�
 2. 保留程序目录内的 DLL、resources 等文件；ZIP 内的 `MD.exe` 需要这些配套文件，不能单独复制。
 3. 升级时，将新版完整解压到独立目录，保存并正常退出旧版，再打开新版。同一用户配置只运行一个实例。
 
-适配目标是 **Windows 10 / 11 x64**；已有原生桌面验证环境为 Windows 11 x64，尚未在独立 Windows 10 机器验证。当前下载为 **0.1.30 公开预览版**，便携包未签名，不含安装器。本版本实际执行的检查与限制见 [验证记录](docs/VALIDATION-0.1.30.md)。[0.1.30 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) 提供六个附件：单文件 EXE、完整文件夹 ZIP、源码 ZIP、`SKILL.md`、`SKILL.en.md` 和 `SHA256SUMS.txt`。
+适配目标是 **Windows 10 / 11 x64**；已有原生桌面验证环境为 Windows 11 x64，尚未在独立 Windows 10 机器验证。当前下载为 **0.1.30 公开预览版**，便携包未签名，不含安装器。0.1.30 实际执行的检查与限制见 [历史验证记录](docs/VALIDATION-0.1.30.md)，不能据此认定 0.1.32 已通过相同检查。[0.1.30 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) 提供六个附件：单文件 EXE、完整文件夹 ZIP、源码 ZIP、`SKILL.md`、`SKILL.en.md` 和 `SHA256SUMS.txt`。
 
 默认打开方式：进入 **更多操作（…）→ 设置 → 设置默认打开方式**，为当前程序注册本机入口并打开 Windows 设置，再为 `.md` 和 `.markdown` 选择 MD。若注册失败，仍可点击“打开系统设置”手动选择；“复制程序路径”可用于系统文件选择框，“查看错误详情”会显示原因和错误代码。最终默认应用由 Windows 界面确认。升级或移动程序后，请从新位置重新设置。
 
@@ -42,13 +44,14 @@ Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读�
 
 检查更新：打开 **更多操作（…）→ 检查更新**，或 **设置 → 检查更新**，在弹窗中点击检查。应用仅在你手动检查时读取本仓库的公开 GitHub 发布信息（包括公开预览版），显示当前版本、最新兼容 Windows x64 版本及纯文本更新说明。点击发布页按钮会在外部浏览器打开已核对的官方发布页；下载后按上面的步骤升级。应用不会在后台自动检查，也不会自动下载、安装或重启。关闭弹窗后可继续编辑和保存文档。
 
-**macOS 版本已列入后续开发计划，目前尚未发布 Mac 下载包。** 后续会继续优化现有功能，并进行 macOS 适配与实机验证；支持的系统版本、芯片架构和发布日期将在确认后公布，见 [开发计划](ROADMAP.md)。
+**另一分支已发布 0.1.31 macOS 预览包，尚未经过 Mac 实机验证。** 本次 0.1.32 分支基于 Windows 0.1.30 开发，仅作为 Windows 本地测试版，不代表 Mac 兼容性已经确认。
 
 ## 功能
 
 | 功能 | 支持内容 |
 | --- | --- |
 | 阅读与编辑 | 所见即所得编辑；标题、列表、待办、引用、表格、图片、代码块；语法高亮 |
+| 本地图片 | 编辑时粘贴截图或拖入图片；草稿先插图再保存，自动管理同名 `.assets` 文件夹 |
 | 源码与对照 | 查看完整 Markdown；双向编辑、实时预览、共享撤销重做 |
 | 多文档 | 独立标签、阅读位置、编辑状态、缩放和未保存内容；提前命名文件 |
 | 思维导图 | 拖动对齐与多选移动、连线避让、三种连线、三档宽度、完整长标题与备注、关系线样式、折叠与整理布局 |
@@ -98,7 +101,7 @@ npm run package
 npm run package:portable
 ```
 
-`npm run package` 生成 `.packaged/MD-win32-x64` 文件夹版；`npm run package:portable` 先构建文件夹版，再生成 `.packaged/portable/MD-Windows-x64-版本号.exe`。首次安装依赖或构建可能下载运行时及打包工具，已生成的单文件程序启动时不需要联网下载组件。运行测试和原生桌面检查的方法见 [贡献指南](CONTRIBUTING.md)；本版本的实际检查见 [验证记录](docs/VALIDATION-0.1.30.md)。
+`npm run package` 生成 `.packaged/MD-win32-x64` 文件夹版；`npm run package:portable` 先构建文件夹版，再生成 `.packaged/portable/MD-Windows-x64-版本号.exe`。首次安装依赖或构建可能下载运行时及打包工具，已生成的单文件程序启动时不需要联网下载组件。运行测试和原生桌面检查的方法见 [贡献指南](CONTRIBUTING.md)；0.1.30 的历史检查见 [验证记录](docs/VALIDATION-0.1.30.md)，不代表当前本地测试版的验证结果。
 
 ## 维护与反馈
 

@@ -8,7 +8,7 @@ const { applicationLaunchContext, secondInstanceWorkingDirectory } = require('..
 protocol.registerSchemesAsPrivileged([{ scheme: 'moye-image', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const dataArg = process.argv.find(arg => arg.startsWith('--user-data-dir='));
 if (dataArg) app.setPath('userData', dataArg.slice('--user-data-dir='.length));
-let win, files, helpers, imageHelpers, mindmap, mindmapFiles, mindmapCreate, recovery, recoveryStore, windowState, windowStore, openQueue, openArguments, doc, closing = false, busy = false;
+let win, files, helpers, imageHelpers, imageAssets, imageAssetStore, mindmap, mindmapFiles, mindmapCreate, recovery, recoveryStore, windowState, windowStore, openQueue, openArguments, doc, closing = false, busy = false;
 let recoveryNotice = null, rendererReady = false, openingInitial = false, windowSaveTimer, lastWindowState, correctingWindow = false;
 let t = message => message, getLocale = () => 'zh-CN', setLocale, settingsStore, updateChecker, openWindowsDefaultApps, openWindowsDefaultSettings;
 const launchContext = applicationLaunchContext({ isPackaged: app.isPackaged });
@@ -162,7 +162,17 @@ async function saveDocument(content, as = false, document = doc, sourceSafe = fa
   if (!record.dirty && samePath && content === record.content) return { ...payload(record), unchanged: true };
   const pendingLink = record.pendingMindmapLink;
   const preparedLink = pendingLink ? await prepareDraftLink(record) : null;
-  const saved = pendingLink && !record.path ? await mindmapCreate.writeNewMarkdown(target, content) : await files.writeDocument(target, content, expected);
+  let imageReplacements = [], rollbackImages;
+  if (!isMindmap) {
+    const header = helpers.splitFrontmatter(content);
+    const materialized = await imageAssetStore.materialize(record, header ? header.body : content, target);
+    content = header ? header.prefix + materialized.content : materialized.content;
+    imageReplacements = materialized.imageReplacements;
+    rollbackImages = materialized.rollback;
+  }
+  let saved;
+  try { saved = pendingLink && !record.path ? await mindmapCreate.writeNewMarkdown(target, content) : await files.writeDocument(target, content, expected); }
+  catch (error) { await rollbackImages?.(); throw error; }
   const skillDocument = Boolean(isSkillDocument(record));
   Object.assign(record, saved, { fileKey: await fileKey(saved.path), skillDocument, imageKey: samePath ? record.imageKey : randomUUID(), inserted: samePath ? record.inserted : undefined, dirty: false, namedDraft: false, previewContent: saved.content, copyOnly: !isMindmap && !sourceSafe && helpers.detectUnsupported(saved.content).length > 0 });
   record.draft = saved.content; record.visualLossy = false;
@@ -178,7 +188,7 @@ async function saveDocument(content, as = false, document = doc, sourceSafe = fa
   delete record.pendingMindmapLink;
   if (record === doc) updateTitle();
   await persistSession();
-  return { ...payload(record), ...(linkedMindmap ? { linkedMindmap } : {}), ...(pendingLink && !linkedMindmap ? { mindmapLinkSkipped: true } : {}) };
+  return { ...payload(record), ...(imageReplacements.length ? { imageReplacements } : {}), ...(linkedMindmap ? { linkedMindmap } : {}), ...(pendingLink && !linkedMindmap ? { mindmapLinkSkipped: true } : {}) };
 }
 async function guardUnsaved(document = doc, discarded) {
   if (!needsSave(document)) return true;
@@ -193,6 +203,20 @@ async function guardUnsaved(document = doc, discarded) {
     return true;
   }
   discarded?.add(document.id);
+  return true;
+}
+async function prepareWindowClose() {
+  await askCloseState();
+  const discarded = new Set();
+  // Saving a node draft can dirty its map. Process those drafts first so
+  // every newly attached path is included in the map's Save/Discard choice.
+  const closeOrder = [...documents.values()].sort((a, b) => Number(Boolean(b.pendingMindmapLink)) - Number(Boolean(a.pendingMindmapLink)));
+  for (const value of closeOrder) if (!await guardUnsaved(value, discarded)) return false;
+  await persistSession(discarded.size > 0, recovery.sessionAfterDiscard(sessionSnapshot(), discarded));
+  await saveWindowPlacement();
+  // Cleanup is last: a later Cancel or failed recovery write must leave every
+  // live draft readable. Retained tabs still need their caches on next launch.
+  for (const id of discarded) await imageAssetStore.discard(id).catch(error => console.error(t('暂存图片清理失败'), error.code));
   return true;
 }
 async function fileKey(target) {
@@ -245,18 +269,58 @@ async function closeDocument(id) {
   if (!documents.size) setDocument({ path: null, content: '', fingerprint: null }, true, false);
   else if (active) activateDocument(ids[index + 1] || ids[index - 1], false);
   await persistSession(true);
+  // Both durable snapshots have dropped this tab. Cleanup is deliberately not
+  // performed while asking Save/Discard: a later Cancel must retain its images.
+  await imageAssetStore.discard(id).catch(error => console.error(t('暂存图片清理失败'), error.code));
   win.webContents.send('moye:closed', { id, document: payload() });
   return { ok: true };
+}
+async function importImages(documentId, items) {
+  const record = documents.get(documentId);
+  if (!record) throw new Error(t('文档标签已关闭。'));
+  if (record.type === 'mindmap') throw new Error(t('请在 Markdown 文档中插入图片。'));
+  const images = await imageAssetStore.importImages(record, items);
+  record.inserted ??= new Set();
+  for (const image of images) record.inserted.add(image.src);
+  return { documentId: record.id, images };
+}
+async function chooseImages(documentId) {
+  const record = documents.get(documentId);
+  if (!record) throw new Error(t('文档标签已关闭。'));
+  if (record.type === 'mindmap') throw new Error(t('请在 Markdown 文档中插入图片。'));
+  const result = await dialog.showOpenDialog(win, { title: t('插入本地图片'), properties: ['openFile', 'multiSelections'], filters: [{ name: t('图片'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }] });
+  if (result.canceled) return { canceled: true };
+  if (!Array.isArray(result.filePaths) || !result.filePaths.length || result.filePaths.length > imageAssets.MAX_IMAGE_COUNT) throw new Error(t('每次最多插入 10 张图片。'));
+  const items = []; let total = 0;
+  for (const source of result.filePaths) {
+    const handle = await fs.open(source, 'r');
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) throw new Error(t('请选择有效的 PNG、JPEG、GIF 或 WebP 图片。'));
+      if (info.size > imageAssets.MAX_IMAGE_BYTES) throw new Error(t('每张图片不能超过 20 MB。'));
+      const chunks = []; let size = 0;
+      for await (const chunk of handle.createReadStream({ autoClose: false })) {
+        size += chunk.length; total += chunk.length;
+        if (size > imageAssets.MAX_IMAGE_BYTES) throw new Error(t('每张图片不能超过 20 MB。'));
+        if (total > imageAssets.MAX_IMAGE_BATCH_BYTES) throw new Error(t('每次插入的图片合计不能超过 50 MB。'));
+        chunks.push(chunk);
+      }
+      items.push({ name: path.basename(source), type: '', bytes: Buffer.concat(chunks) });
+    } finally { await handle.close(); }
+  }
+  const imported = await importImages(record.id, items);
+  return { ...imported, ...(imported.images.length === 1 ? imported.images[0] : {}) };
 }
 async function imageRequest(request) {
   try {
     const url = new URL(request.url);
     const record = [...documents.values()].find(value => value.imageKey === url.hostname);
-    if (!record?.path || record.type === 'mindmap') return new Response('', { status: 403 });
+    if (!record || record.type === 'mindmap') return new Response('', { status: 403 });
     const source = decodeURIComponent(url.pathname.slice(1));
-    if (/^[a-z][a-z0-9+.-]*:/i.test(source) || source.startsWith('//')) return new Response('', { status: 403 });
-    const resolved = path.resolve(path.dirname(record.path), decodeURIComponent(source));
-    const real = await fs.realpath(resolved);
+    const draft = source.startsWith('md-draft-image:');
+    if (!draft && (!record.path || /^[a-z][a-z0-9+.-]*:/i.test(source) || source.startsWith('//'))) return new Response('', { status: 403 });
+    const real = draft ? await imageAssetStore.resolveDraft(record.id, source)
+      : await fs.realpath(path.resolve(path.dirname(record.path), decodeURIComponent(source)));
     const ext = path.extname(real).toLowerCase();
     if (!imageTypes[ext]) return new Response('', { status: 415 });
     const info = await fs.stat(real); if (!info.isFile() || info.size > 20 * 1024 * 1024) return new Response('', { status: 413 });
@@ -366,6 +430,8 @@ if (ownsProfile) app.whenReady().then(async () => {
   files = await import(pathToFileURL(path.join(root, 'src/files.mjs')).href);
   helpers = await import(pathToFileURL(path.join(root, 'src/document.mjs')).href);
   imageHelpers = await import(pathToFileURL(path.join(root, 'src/images.mjs')).href);
+  imageAssets = await import(pathToFileURL(path.join(root, 'src/image-assets.mjs')).href);
+  imageAssetStore = imageAssets.createImageAssetStore(app.getPath('userData'));
   mindmap = await import(pathToFileURL(path.join(root, 'src/mindmap.mjs')).href);
   mindmapFiles = await import(pathToFileURL(path.join(root, 'src/mindmap-files.mjs')).href);
   mindmapCreate = await import(pathToFileURL(path.join(root, 'src/mindmap-create.mjs')).href);
@@ -526,19 +592,8 @@ if (ownsProfile) app.whenReady().then(async () => {
     return { ok: true, copyOnly: doc.copyOnly };
   });
   handle('link', async value => { if (!helpers.safeLink(value)) return { error: t('只支持网页或邮件链接。') }; await shell.openExternal(value); return { ok: true }; });
-  handle('image', async () => {
-    if (doc.type === 'mindmap') return { error: t('请在 Markdown 文档中插入图片。') };
-    if (!doc.path) return { error: t('插入图片前，请先保存文档。') };
-    const result = await dialog.showOpenDialog(win, { title: t('插入本地图片'), properties: ['openFile'], filters: [{ name: t('图片'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }] });
-    if (result.canceled) return { canceled: true };
-    const source = result.filePaths[0], ext = path.extname(source).toLowerCase();
-    if (!imageTypes[ext] || (await fs.stat(source)).size > 20 * 1024 * 1024) throw new Error(t('请选择 20 MB 以内的 PNG、JPEG、GIF 或 WebP 图片。'));
-    const directory = path.basename(doc.path, path.extname(doc.path)) + '.assets';
-    const destination = path.join(path.dirname(doc.path), directory); await fs.mkdir(destination, { recursive: true });
-    const filename = randomUUID().slice(0, 12) + ext; await fs.copyFile(source, path.join(destination, filename));
-    const src = encodeURIComponent(directory) + '/' + filename; doc.inserted ??= new Set(); doc.inserted.add(src);
-    return { src, alt: path.basename(source, ext), imageKey: doc.imageKey };
-  });
+  handle('image', chooseImages);
+  handle('import-images', importImages);
   ipcMain.on('moye:dirty', (event, id, value, visualLossy = false) => {
     const record = documents.get(id);
     if (authorized(event) && record) { record.dirty = Boolean(value); if (visualLossy === true && record.type !== 'mindmap') record.copyOnly = true; if (record === doc) updateTitle(); }
@@ -582,17 +637,7 @@ if (ownsProfile) app.whenReady().then(async () => {
     if (closing) return;
     if (busy) { event.preventDefault(); if (checkpointInProgress) closeAfterCheckpoint = true; return; }
     event.preventDefault(); busy = true;
-    (async () => {
-      await askCloseState();
-      const discarded = new Set();
-      // Saving a node draft can dirty its map. Process those drafts first so
-      // every newly attached path is included in the map's Save/Discard choice.
-      const closeOrder = [...documents.values()].sort((a, b) => Number(Boolean(b.pendingMindmapLink)) - Number(Boolean(a.pendingMindmapLink)));
-      for (const value of closeOrder) if (!await guardUnsaved(value, discarded)) return false;
-      await persistSession(discarded.size > 0, recovery.sessionAfterDiscard(sessionSnapshot(), discarded));
-      await saveWindowPlacement();
-      return true;
-    })()
+    prepareWindowClose()
       .then(ok => { if (ok) { closing = true; win.close(); } }).catch(error => dialog.showErrorBox(t('保存失败'), t(error.message))).finally(() => {
         busy = false; if (!win.isDestroyed()) { win.webContents.send('moye:closing-canceled'); drainOpenQueue(); }
       });

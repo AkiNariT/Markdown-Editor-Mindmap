@@ -1,4 +1,5 @@
-import { createEditor } from './editor.js';
+import { createEditor, imageRangeInCode, insertEditorImages } from './editor.js';
+import { imageFilesFromTransfer, protectTextInputImagePaste, readImagePayloads, imageMarkdown, importAtTarget, imageURLForDocument } from './image-transfer.mjs';
 import { safeLink, detectUnsupported } from './document.mjs';
 import { splitFrontmatter, composeMarkdown } from './frontmatter.mjs';
 import { createSourceEditor, toSourceText, fromSourceText } from './source.mjs';
@@ -127,9 +128,7 @@ function setMode(value) {
   hideMenus(); updateSelection();
 }
 function imageURL(src, value = current) {
-  if (/^https?:\/\//i.test(src)) return src;
-  if (!value?.path || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith('//')) return '';
-  return `moye-image://${value.imageKey}/${encodeURIComponent(src)}`;
+  return imageURLForDocument(src, value);
 }
 function skillValues() { return documentParts?.skill ? { name: $('skill-name').value, description: $('skill-description').value } : undefined; }
 function metadataSignature() { return JSON.stringify(skillValues()) || ''; }
@@ -217,7 +216,11 @@ function createSession(value, mountEditor = false) {
   state.source = createSourceEditor(context => { const live = sessions.get(value.id); if (loaded && live && current?.id === value.id) sourceInput(live, context); });
   state.source.setText(toSourceText(value.content));
   state.source.input.addEventListener('scroll', () => { if (loaded && current?.id === value.id) syncScroll('source'); });
+  state.source.input.addEventListener('paste', event => handleImageTransfer(event, sessions.get(value.id), 'source'));
+  state.source.input.addEventListener('drop', event => handleImageTransfer(event, sessions.get(value.id), 'source'));
   state.editor = createEditor(mountEditor ? state.host : null, parts ? parts.body : value.content, { editable: false, imageURL: src => imageURL(src, state.current),
+    handlePaste: (_view, event) => handleImageTransfer(event, state, 'visual'),
+    handleDrop: (view, event) => handleImageTransfer(event, state, 'visual', view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos),
     onUpdate: ({ transaction }) => { if (loaded && visualView() && transaction.docChanged && current?.id === value.id) markVisualChange(state); },
     onSelectionUpdate: () => { if (loaded && current?.id === value.id) updateSelection(); } });
   state.baseline = state.editor.getMarkdown().trimEnd();
@@ -500,6 +503,68 @@ async function action(callback) {
   if (working || closing) return; working = true; setInputPermissions(); updateSelection(); renderTabs();
   try { return await callback(); } catch (error) { toast(error.message, true); } finally { working = false; setInputPermissions(); updateSelection(); renderTabs(); checkpoint.schedule(); }
 }
+function canInsertImages(state, surface) {
+  return loaded && editing && !working && !closing && !hasComposition() && !document.querySelector('dialog[open]')
+    && state && !state.map && sessions.get(current?.id) === state
+    && (surface === 'source' ? viewMode !== 'render' : visualView());
+}
+function imageTargetCurrent(target) {
+  return !closing && !hasComposition() && editing && current?.id === target.id && viewMode === target.view
+    && sessions.get(target.id) === target.session && target.session.current.path === target.path
+    && target.session.editor === target.editor && !target.editor.isDestroyed
+    && target.editor.state.doc === target.document && target.session.source.getText() === target.sourceText;
+}
+function handleImageTransfer(event, state, surface, dropPosition) {
+  const files = imageFilesFromTransfer(event.clipboardData || event.dataTransfer);
+  if (!files.length || !canInsertImages(state, surface)) return false;
+  event.preventDefault(); event.stopPropagation();
+  if (surface === 'visual' && event.type === 'drop' && !Number.isInteger(dropPosition)) {
+    toast(t('无法在此位置插入图片。'), true); return true;
+  }
+  void insertImages(state, surface, files, dropPosition);
+  return true;
+}
+async function insertImages(state, surface, files, dropPosition) {
+  if (!canInsertImages(state, surface)) return;
+  const input = state.source.input;
+  const target = { id: current.id, path: current.path, session: state, editor: state.editor, document: state.editor.state.doc,
+    sourceText: state.source.getText(), view: viewMode, surface,
+    range: surface === 'source' ? { start: input.selectionStart, end: input.selectionEnd }
+      : Number.isInteger(dropPosition) ? { from: dropPosition, to: dropPosition }
+        : { from: state.editor.state.selection.from, to: state.editor.state.selection.to } };
+  // Capture both document identity and caret before action locks the controls or
+  // any file bytes are read. An external open can still change the active tab.
+  if (surface === 'visual' && imageRangeInCode(state.editor, target.range)) {
+    toast(t('请将光标移出代码块后再插入图片。'), true); return;
+  }
+  let inserted = false;
+  await action(async () => {
+    inserted = await importAtTarget(target, {
+      isCurrent: imageTargetCurrent,
+      request: async () => {
+        if (!files) return api.insertImage(target.id);
+        const payloads = await readImagePayloads(files);
+        if (!imageTargetCurrent(target)) throw new Error(t('文档已切换或内容已变化，图片未插入，请重试。'));
+        return api.importImages(target.id, payloads);
+      },
+      insert: images => {
+        if (surface === 'source') state.source.replaceSelection(imageMarkdown(images, {
+          before: target.sourceText.slice(0, target.range.start), after: target.sourceText.slice(target.range.end),
+        }), target.range);
+        else {
+          state.source.closeGroup();
+          insertEditorImages(target.editor, target.range, images);
+          state.source.closeGroup();
+        }
+      },
+    });
+    if (inserted) await checkpoint.flush();
+  });
+  if (inserted && !closing && current?.id === target.id && sessions.get(target.id) === state) {
+    if (surface === 'source') input.focus({ preventScroll: true });
+    else if (!target.editor.isDestroyed) target.editor.view.focus();
+  }
+}
 async function save(as = false) {
   const result = unpack(await api.save(content(), as, sourceSafe(sessions.get(current.id))));
   if (result.canceled) return;
@@ -580,7 +645,7 @@ function applySaved(result) {
   }
   if (samePath) {
     state.current = result;
-    if (state.authority === 'source') replacePreview(state, result.content);
+    if (state.authority === 'source' || result.imageReplacements?.length) replacePreview(state, result.content);
     state.source.setText(toSourceText(result.content), { context: { lossy: false } });
     Object.assign(state, { documentParts: readDocumentParts(result), visualOriginal: result.content, baseline: state.editor.getMarkdown().trimEnd(), baselineMetadata: JSON.stringify(state.metadata) || '', baselinePrefix: readDocumentParts(result)?.prefix || '', dirty: false, visualLossy: false });
     state.projection = { markdown: state.baseline, metadata: state.baselineMetadata, content: result.content, lossy: false };
@@ -654,7 +719,7 @@ async function command(name) {
   if (name === 'link') { showLink(); return; }
   if (name === 'table') { $('table-dialog').showModal(); return; }
   if (name === 'image') {
-    await action(async () => { const result = unpack(await api.insertImage()); if (result.canceled) return; editor.chain().focus().setImage({ src: result.src, alt: result.alt }).run(); }); return;
+    await insertImages(sessions.get(current.id), 'visual'); return;
   }
   const chain = editor.chain().focus();
   const commands = { bold: () => chain.toggleBold(), italic: () => chain.toggleItalic(), strike: () => chain.toggleStrike(), heading1: () => chain.toggleHeading({ level: 1 }), heading2: () => chain.toggleHeading({ level: 2 }), paragraph: () => chain.setParagraph(), bulletList: () => chain.toggleBulletList(), orderedList: () => chain.toggleOrderedList(), taskList: () => chain.toggleTaskList(), blockquote: () => chain.toggleBlockquote(), codeBlock: () => chain.toggleCodeBlock(), horizontalRule: () => chain.setHorizontalRule() };
@@ -821,8 +886,12 @@ window.addEventListener('beforeunload', () => checkpoint.stop());
 document.addEventListener('focusin', () => { if (viewMode === 'compare') sessions.get(current?.id)?.source.closeGroup(); updateSelection(); });
 window.addEventListener('resize', () => { hideMenus(); updateSelection(); revealActiveTab(); });
 document.addEventListener('dragover', event => { event.preventDefault(); });
+document.addEventListener('paste', protectTextInputImagePaste);
 document.addEventListener('drop', event => {
   event.preventDefault(); const file = event.dataTransfer.files[0];
+  // Image drops are handled only by an editable document pane. Do not open them
+  // as documents when dropped on application chrome or a read-only pane.
+  if (imageFilesFromTransfer(event.dataTransfer).length) return;
   if (!file) return; if (!/\.(md|markdown|mdmap)$/i.test(file.name)) { toast(t('请拖入 .md、.markdown 或 .mdmap 文件')); return; }
   action(async () => unpack(await api.openDropped(file)));
 });

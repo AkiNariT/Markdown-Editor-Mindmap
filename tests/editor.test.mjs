@@ -5,8 +5,92 @@ const dom = new JSDOM('<!doctype html><body><main></main></body>', { url: 'https
 for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'Node', 'DOMParser', 'MutationObserver', 'KeyboardEvent', 'getComputedStyle']) {
   Object.defineProperty(globalThis, name, { value: name === 'getComputedStyle' ? dom.window.getComputedStyle.bind(dom.window) : dom.window[name], configurable: true });
 }
-const { createEditor } = await import('../src/editor.js');
+const editorTools = await import('../src/editor.js');
+const { createEditor } = editorTools;
+const { imageMarkdown } = await import('../src/image-transfer.mjs');
 const fixture = '# 我的文档\n\n这是 **粗体** 和 *斜体*，~~删除线~~，以及 [网页](https://example.com)。\n\n- 项目\n  - 子项目\n\n1. 第一项\n2. 第二项\n\n- [x] 完成\n- [ ] 未完成\n\n> 引用文字\n\n| 名称 | 数量 |\n| --- | --- |\n| 中文 | 2 |\n\n![图片](assets/photo.png)\n\n```js\nconst answer = 42;\n```\n\n第一行  \n第二行\n';
+
+test('repeated source image insertion creates valid independent image blocks', () => {
+  let text = 'Before\n\n';
+  for (const src of ['one.png', 'two.png']) {
+    text += imageMarkdown([{ src, alt: '' }], { before: text, after: '' }) + '\n';
+  }
+  const editor = createEditor(document.createElement('div'), text);
+  try {
+    assert.doesNotThrow(() => editor.state.doc.check(), 'block images must not become invalid children of a paragraph');
+    assert.deepEqual(editor.getJSON().content.map(node => node.type), ['paragraph', 'image', 'image']);
+    assert.equal(editor.getJSON().content[0].content[0].text, 'Before');
+    assert.deepEqual(editor.getJSON().content.filter(node => node.type === 'image').map(node => node.attrs.src), ['one.png', 'two.png']);
+  } finally { editor.destroy(); }
+});
+
+test('source image insertion within prose retains both text sides around a valid image block', () => {
+  const before = 'Left side', after = 'right side';
+  const text = before + imageMarkdown([{ src: 'middle.png', alt: 'Middle' }], { before, after }) + after;
+  const editor = createEditor(document.createElement('div'), text);
+  try {
+    assert.doesNotThrow(() => editor.state.doc.check());
+    const nodes = editor.getJSON().content;
+    assert.deepEqual(nodes.map(node => node.type), ['paragraph', 'image', 'paragraph']);
+    assert.equal(nodes[0].content[0].text, before);
+    assert.equal(nodes[1].attrs.src, 'middle.png');
+    assert.equal(nodes[2].content[0].text, after);
+  } finally { editor.destroy(); }
+});
+
+test('image paste and drop handlers can claim file transfers without replacing ordinary paste behavior', () => {
+  const host = document.createElement('div'); document.body.append(host);
+  const editor = createEditor(host, 'Before', {
+    handlePaste(view, event) {
+      if (!event.clipboardData.files.length) return false;
+      view.dispatch(view.state.tr.replaceSelectionWith(view.state.schema.nodes.image.create({ src: 'pasted.png' })));
+      return true;
+    },
+    handleDrop(view, event) {
+      if (!event.dataTransfer.files.length) return false;
+      view.dispatch(view.state.tr.replaceSelectionWith(view.state.schema.nodes.image.create({ src: 'dropped.png' })));
+      return true;
+    },
+  });
+  try {
+    const claimed = editor.view.someProp('handlePaste', handler => handler(editor.view, { clipboardData: { files: [{}], getData: () => '' } }));
+    assert.equal(claimed, true);
+    assert.match(editor.getMarkdown(), /pasted\.png/);
+    const ignored = editor.view.someProp('handlePaste', handler => handler(editor.view, { clipboardData: { files: [], getData: () => '' } }));
+    assert.ok(!ignored, 'ordinary paste remains available to the existing editor');
+    const dropped = editor.view.someProp('handleDrop', handler => handler(editor.view, { dataTransfer: { files: [{}] } }));
+    assert.equal(dropped, true);
+    assert.match(editor.getMarkdown(), /dropped\.png/);
+  } finally { editor.destroy(); host.remove(); }
+});
+
+test('a delayed multi-image insertion restores its captured range and has one isolated undo step', () => {
+  const editor = createEditor(document.createElement('div'), 'LEFT target RIGHT');
+  try {
+    editor.commands.setTextSelection(1); editor.commands.insertContent('x');
+    const beforeImages = editor.getMarkdown();
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    editorTools.insertEditorImages(editor, { from: 7, to: 13 }, [{ src: 'one.png', alt: 'one' }, { src: 'two.png', alt: 'two' }]);
+    const withImages = editor.getMarkdown();
+    assert.doesNotMatch(withImages, /target/); assert.match(withImages, /^xLEFT/);
+    assert.ok(withImages.indexOf('one.png') < withImages.indexOf('two.png'));
+    assert.ok(withImages.indexOf('two.png') < withImages.indexOf('RIGHT'));
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1); editor.commands.insertContent('!');
+    assert.equal(editor.commands.undo(), true); assert.equal(editor.getMarkdown(), withImages, 'following text is a separate step');
+    assert.equal(editor.commands.undo(), true); assert.equal(editor.getMarkdown(), beforeImages, 'all imported images undo together');
+    assert.equal(editor.commands.undo(), true); assert.equal(editor.getMarkdown(), 'LEFT target RIGHT', 'preceding text remains independently undoable');
+    editor.commands.redo(); editor.commands.redo(); assert.equal(editor.getMarkdown(), withImages);
+  } finally { editor.destroy(); }
+});
+
+test('image insertion into a code block leaves its source and history intact', () => {
+  const editor = createEditor(document.createElement('div'), '```js\nconst answer = 42;\n```');
+  try {
+    const before = editor.getMarkdown();
+    assert.throws(() => editorTools.insertEditorImages(editor, { from: 2, to: 2 }, [{ src: 'one.png', alt: '' }]), /代码块/);
+    assert.equal(editor.getMarkdown(), before); assert.equal(editor.commands.undo(), false);
+  } finally { editor.destroy(); }
+});
 test('visual editor renders formats and roundtrip retains meaningful Markdown content', () => {
   const element = document.createElement('div'); document.body.append(element);
   const editor = createEditor(element, fixture);

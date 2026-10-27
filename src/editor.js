@@ -9,8 +9,22 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { safeLink } from './document.mjs';
 import { t, onLocaleChange } from './i18n.mjs';
+import { closeHistory } from '@tiptap/pm/history';
 
 const lowlight = createLowlight(common);
+
+export function imageRangeInCode(editor, range) {
+  return [range.from, range.to].some(position => editor.state.doc.resolve(position).parent.type.spec.code);
+}
+
+export function insertEditorImages(editor, range, images) {
+  if (imageRangeInCode(editor, range)) throw new Error(t('请将光标移出代码块后再插入图片。'));
+  const inserted = editor.chain().command(({ tr }) => { closeHistory(tr); return true; })
+    .insertContentAt(range, images.map(image => ({ type: 'image', attrs: image }))).run();
+  if (!inserted) throw new Error(t('无法在此位置插入图片。'));
+  // Keep the next keystroke out of this batch's history event as well.
+  editor.view.dispatch(closeHistory(editor.state.tr));
+}
 
 export function createEditor(element, markdown = '', options = {}) {
   const MarkdownImage = Image.extend({
@@ -52,7 +66,10 @@ export function createEditor(element, markdown = '', options = {}) {
       Markdown.configure({ markedOptions: { gfm: true } }),
     ],
     content: markdown.replace(/^\ufeff/, ''), contentType: 'markdown',
-    editorProps: { attributes: () => ({ 'aria-label': t('文档正文'), spellcheck: 'false' }) },
+    editorProps: { attributes: () => ({ 'aria-label': t('文档正文'), spellcheck: 'false' }),
+      ...(options.handlePaste ? { handlePaste: options.handlePaste } : {}),
+      ...(options.handleDrop ? { handleDrop: options.handleDrop } : {}),
+    },
     ...(options.onUpdate ? { onUpdate: options.onUpdate } : {}),
     ...(options.onSelectionUpdate ? { onSelectionUpdate: options.onSelectionUpdate } : {}),
   });

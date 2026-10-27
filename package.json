@@ -1,7 +1,7 @@
 {
   "name": "moye",
   "productName": "MD",
-  "version": "0.1.30",
+  "version": "0.1.32",
   "description": "极简 Markdown 阅读与可视化编辑器",
   "main": "electron/main.cjs",
   "type": "module",
@@ -10,6 +10,7 @@
     "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:desktop": "node tests/desktop.cjs",
+    "test:image-paste": "node tests/image-paste.cjs",
     "test:layout": "node tests/layout.cjs",
     "test:code": "node tests/code.cjs",
     "start": "electron .",
