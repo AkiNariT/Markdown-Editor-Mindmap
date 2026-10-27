@@ -2,9 +2,9 @@
 
 Markdown-Editor-Mindmap (MD) is a minimal desktop Markdown reader and editor with visual editing, source/split views, and mindmaps linked to local Markdown files.
 
-[简体中文](README.md) · [Windows 0.1.30 public release](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
+[简体中文](README.md) · [Windows 0.1.32 public preview](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.32) · [User guide](README.en.txt) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
-**Current branch: Windows 0.1.32 local test build, not yet published to GitHub.** Based on Windows 0.1.30, it adds Ctrl+V screenshot/image paste and image-file drop in Markdown Edit mode. PNG, JPEG, GIF and WebP are supported: up to 10 images per import, 20 MiB per image and 50 MiB per batch. Drafts can contain images before their first save; saving creates an adjacent `.assets` folder. Share that folder with the `.md` file. Images stay local and are not uploaded. See the [image-paste guide](docs/IMAGE-PASTE.md). The 0.1.30 downloads below do not include this feature.
+**Windows 0.1.32 public preview:** Adds Ctrl+V screenshot/image paste and image-file drop in Markdown Edit mode. PNG, JPEG, GIF and WebP are supported: up to 10 images per import, 20 MiB per image and 50 MiB per batch. Drafts can contain images before their first save; saving creates an adjacent `.assets` folder. Share that folder with the `.md` file. Images stay local and are not uploaded. See the [image-paste guide](docs/IMAGE-PASTE.md) and [validation record](docs/VALIDATION-0.1.32.md).
 
 **Previously released in Windows 0.1.30:** Fixes roots, branches and selected groups getting stuck at canvas edges, and inconsistent bends in orthogonal lines to aligned nodes. The canvas expands during dragging, children follow, and obstacle avoidance remains. Unpressed mouse movement no longer affects a drag. The canvas and SVG/PNG/PDF exports share the corrected routing. See the [changelog](CHANGELOG.md) and [validation record](docs/VALIDATION-0.1.30.md).
 
@@ -12,13 +12,13 @@ Markdown-Editor-Mindmap (MD) is a minimal desktop Markdown reader and editor wit
 
 This project is developed primarily with AI tools.
 
-## Published Windows 0.1.30 downloads
+## Windows 0.1.32 downloads
 
 ### Recommended: single-file EXE
 
-**[Download the Windows x64 single-file EXE](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.30/MD-Windows-x64-0.1.30.exe)**
+**[Download the Windows x64 single-file EXE](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.32/MD-Windows-x64-0.1.32.exe)**
 
-1. Put `MD-Windows-x64-0.1.30.exe` on your Desktop or in another convenient location. Renaming is supported.
+1. Put `MD-Windows-x64-0.1.32.exe` on your Desktop or in another convenient location. Renaming is supported.
 2. Double-click it. No installation, administrator access or additional runtime download is required.
 3. The first launch prepares runtime files under `%LOCALAPPDATA%\MD\Runtime`. Later launches reuse a complete cache; missing, truncated or explicitly failed runtimes trigger preparation of a new copy. Please wait while “Opening MD” is shown; startup time depends on your disk and system load. Before upgrading, save your work and close the old version normally, then open the new file.
 
@@ -28,11 +28,11 @@ Settings and draft backups remain in `%APPDATA%\MD` for the current Windows user
 
 ### Alternative: complete folder ZIP
 
-**[Download the Windows x64 complete folder ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.30/MD-Windows-x64-0.1.30.zip)**
+**[Download the Windows x64 complete folder ZIP](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/download/v0.1.32/MD-Windows-x64-0.1.32.zip)**
 
 Extract the whole archive and run `MD.exe`. Keep the application folder intact: the `MD.exe` inside a folder ZIP needs its accompanying files and cannot be copied on its own. For an upgrade, extract the new version to a separate folder, save your work and close the previous version normally, then run the new executable. Run only one instance with the same user data. Node.js is not required to use the download.
 
-The current download, **0.1.30, is a public preview**. Windows 10/11 x64 are the targets; existing desktop validation uses Windows 11 x64. A separate Windows 10 machine has not been tested. The portable builds are unsigned and have no installer. See the [historical validation record](docs/VALIDATION-0.1.30.md) for 0.1.30 checks and limitations; it does not establish that 0.1.32 has passed the same checks. The [0.1.30 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30) provides six assets: the single-file EXE, complete folder ZIP, source ZIP, `SKILL.md`, `SKILL.en.md` and `SHA256SUMS.txt`.
+The current download, **0.1.32, is a public preview**. Windows 10/11 x64 are the targets; existing desktop validation uses Windows 11 x64. A separate Windows 10 machine has not been tested. The portable builds are unsigned and have no installer. See the [validation record](docs/VALIDATION-0.1.32.md) for this release’s actual checks and limitations. The [0.1.32 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.32) provides six assets: the single-file EXE, complete folder ZIP, source ZIP, `SKILL.md`, `SKILL.en.md` and `SHA256SUMS.txt`.
 
 Default app: Open **More (…) → Settings → Set default app** to register the current application locally and open Windows Settings, then choose MD for `.md` and `.markdown`. If registration fails, use Open Windows Settings to continue manually. Copy program path supplies the path for the system file picker, and View error details shows the cause and error code. Windows confirms the final default selection. Repeat this from the new location after upgrading, moving or renaming the application.
 
@@ -40,7 +40,7 @@ The single-file version registers the outer EXE that you saved. Copy program pat
 
 To check for updates, open **More (…) → Check for updates** or **Settings → Check for updates**, then click the check button in the dialog. This manually retrieves public releases from this repository, including public prereleases, and shows your version, the newest compatible Windows x64 version and plain-text release notes. The release-page button opens a verified official release page in your browser. Download and upgrade using the steps above. MD does not check automatically in the background or automatically download, install or restart. Close the dialog to continue editing and saving documents.
 
-**A separate branch has published a 0.1.31 macOS preview; it has not been tested on Mac hardware.** This 0.1.32 branch is based on Windows 0.1.30 and is a Windows local test build. Mac compatibility has not been verified.
+**The separate macOS preview is available on the [0.1.31 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.31); it has not been tested on Mac hardware.** This 0.1.32 update is for Windows. It does not update the Mac downloads or establish verified Mac compatibility.
 
 ## Features
 
@@ -86,4 +86,4 @@ npm run package
 npm run package:portable
 ```
 
-`npm run package` produces the folder build in `.packaged/MD-win32-x64`; `npm run package:portable` builds that folder and then `.packaged/portable/MD-Windows-x64-VERSION.exe`. Initial dependency installation/builds may download runtimes and packaging tools. The finished single-file app does not download runtime components when launched. Read [CONTRIBUTING.md](CONTRIBUTING.md), [release maintenance](docs/RELEASING.md), [historical 0.1.30 validation](docs/VALIDATION-0.1.30.md) and [security reporting](SECURITY.md) before contributing.
+`npm run package` produces the folder build in `.packaged/MD-win32-x64`; `npm run package:portable` builds that folder and then `.packaged/portable/MD-Windows-x64-VERSION.exe`. Initial dependency installation/builds may download runtimes and packaging tools. The finished single-file app does not download runtime components when launched. Read [CONTRIBUTING.md](CONTRIBUTING.md), [release maintenance](docs/RELEASING.md), [0.1.32 validation](docs/VALIDATION-0.1.32.md) and [security reporting](SECURITY.md) before contributing.

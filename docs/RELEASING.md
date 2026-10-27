@@ -4,9 +4,9 @@
 
 项目公开名称为 **Markdown-Editor-Mindmap（Markdown 可视化编辑与思维导图）**，文件夹内程序名仍为 `MD.exe`。从 0.1.26 开始增加 `MD-Windows-x64-版本号.exe` 单文件便携包，并保留 `MD-Windows-x64-版本号.zip` 完整文件夹包。已经发布的历史下载文件沿用原文件名。后续调整程序内部名称时，应验证恢复目录、Windows 文件关联等兼容行为。
 
-当前公开预览版本为 **0.1.30**。下方命令以本版本为例说明发布流程，后续发布需替换版本号；不要重新创建或覆盖已发布版本。
+当前 Windows 公开预览版本为 **0.1.32**。下方命令以本版本为例说明发布流程，后续发布需替换版本号；不要重新创建或覆盖已发布版本。
 
-- `main` 保存开发中的源码。每次公开发布使用独立的 `v版本号` 标签，例如 `v0.1.30`。
+- `main` 保存开发中的源码。每次公开发布使用独立的 `v版本号` 标签，例如 `v0.1.32`。
 - 已公开的标签和下载资产保持不变；修复后发布新版本，不静默替换旧包。
 - `package.json`、`package-lock.json`、界面帮助、使用说明和更新记录中的版本应同步更新。
 - 改变导图格式时，明确读取版本与最低应用版本，保留旧版读取测试，防止静默丢字段。
@@ -15,6 +15,7 @@
 - 0.1.28 公开包包含 0.1.27 本地版本的启动缓存、内存与连线优化；横向、纵向对齐按钮已由拖动参考线取代。0.1.27 未单独公开发布，保留其历史记录及本地验证文件。v5 导图最低读取版本仍为 0.1.22。
 - 0.1.29 的连线样式、节点宽度、备注和关系线外观使用 v6 导图格式，最低读取版本为 0.1.29；旧 v1 至 v5 仍可读取。此前仅用 v5 整图风格的文件，最低读取版本仍为 0.1.22。
 - 0.1.30 修复导图拖动边界、直角连线转折与鼠标悬停干扰，不改变文件格式。v6 的最低读取版本仍为 0.1.29。
+- 0.1.32 在 Windows 0.1.30 基础上增加图片粘贴与拖入、草稿图片保存；不改变导图格式。0.1.31 macOS 是独立预览分支，本次不更新其标签、资产或下载包。
 - 单文件版推荐给普通用户：只需保留外层 EXE，可复制到桌面或改名后运行。ZIP 内的 MD.exe 仍依赖同目录运行文件，使用说明需明确区分。
 - `package.json` 的 `private: true` 用于防止误发布到 npm，不改变源码的 MIT 许可与 GitHub 公开发布方式。
 
@@ -32,30 +33,32 @@
 
 0.1.30 需重点复验根节点、分支和多选组越过左上边界、子节点跟随、折叠为单节点的小图、显示缩放、鼠标未按键的悬停、吸附参考线、撤销取消与保存重开；同列直角线须在无障碍时共用列间通道，保留避障并核对画布与导出一致。仅对测试窗口使用隔离配置，不操作用户窗口。
 
+0.1.32 需重点复验实际 Windows 剪贴板截图与 Ctrl+V、资源管理器图片拖入、正文／源码／对照视图、未保存草稿首次保存及取消、重启恢复、批量撤销重做、相对 .assets 路径和分享要求。检查 PNG／JPEG／GIF／WebP、单张 20 MiB、最多 10 张及合计 50 MiB 限制、阅读与代码块保护，以及异步导入时切换文档的隔离。测试使用独立配置；实际剪贴板检查须在结束时恢复原内容，不将原内容写入日志。
+
 单文件版需验证只复制外层 EXE 后运行、改名、含中文及空格的路径、打开 Markdown 参数、会话恢复和已有实例处理。运行缓存检查覆盖首次准备、退出后保留、复制／改名后复用、缺失／截断文件修复及并发首次准备。缓存默认位于 `%LOCALAPPDATA%\MD\Runtime`，测试使用隔离的 `MD_PORTABLE_CACHE_HOME` 绝对路径。新缓存写完并校验每个文件的 SHA-256 后才可使用；后续启动检查完成标记和文件大小，不能宣称每次都重验全部内容。修复创建新副本，不能原地修改或删除仍可能被实例使用的旧副本。
 
-确认默认应用注册和“复制程序路径”使用持久保存的外层 EXE，而非运行缓存路径。注册验证继续使用隔离配置，不改真实默认值。确认设置与草稿仍在当前用户原有数据目录中，单文件启动不会下载运行环境或要求管理员权限。后台 Markdown 编辑器视图释放需复验内容、撤销记录、阅读位置、源码／对照模式与草稿恢复。性能测试分别记录空缓存首次准备和完整缓存启动，不以日常启动成绩代替首次启动结果，不承诺首次启动 2 秒。只将实际执行的范围写入对应版本验证记录；本版本以 [VALIDATION-0.1.30.md](VALIDATION-0.1.30.md) 汇总，历史检查保留在对应旧版文件中。
+确认默认应用注册和“复制程序路径”使用持久保存的外层 EXE，而非运行缓存路径。注册验证继续使用隔离配置，不改真实默认值。确认设置与草稿仍在当前用户原有数据目录中，单文件启动不会下载运行环境或要求管理员权限。后台 Markdown 编辑器视图释放需复验内容、撤销记录、阅读位置、源码／对照模式与草稿恢复。性能测试分别记录空缓存首次准备和完整缓存启动，不以日常启动成绩代替首次启动结果，不承诺首次启动 2 秒。只将实际执行的范围写入对应版本验证记录；本版本以 [VALIDATION-0.1.32.md](VALIDATION-0.1.32.md) 汇总，历史检查保留在对应旧版文件中。
 
-Windows 10/11 x64 是兼容目标；已有原生桌面验证使用 Windows 11 x64，不能据此声称已经验证 Windows 10。macOS 仍在计划中，在完成适配和验证前不提供下载或发布日期。项目开发说明统一使用“本项目主要借助 AI 工具开发。”。
+Windows 10/11 x64 是兼容目标；已有原生桌面验证使用 Windows 11 x64，不能据此声称已经验证 Windows 10。macOS 独立预览见 [0.1.31 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.31)，尚未经过 Mac 实机验证；Windows 0.1.32 发布不得宣称已完成 Mac 兼容验证，也不更新 Mac 下载包。项目开发说明统一使用“本项目主要借助 AI 工具开发。”。
 
 ## 标签与下载文件
 
 在已经确认的提交上创建标签并推送，不覆盖已有标签：
 
 ```powershell
-git tag -a v0.1.30 -m "MD 0.1.30"
+git tag -a v0.1.32 -m "MD 0.1.32"
 git push origin main
-git push origin v0.1.30
+git push origin v0.1.32
 ```
 
-后续版本将命令中的版本替换为本次版本。将 `.packaged/portable/MD-Windows-x64-版本号.exe` 作为推荐的单文件下载，同时将完整 `.packaged/MD-win32-x64` 目录复制到独立交付目录后制作 ZIP。两种形式都需包含运行时、项目许可证及第三方 notices。0.1.30 的单文件程序直接内嵌未压缩运行文件，约 338 MB；首次准备后复用当前用户的运行缓存，不安装到系统，也不随 EXE 携带用户设置与草稿。下载体积和缓存磁盘占用需在说明中明确，不把体积取舍写成性能保证。
+后续版本将命令中的版本替换为本次版本。将 `.packaged/portable/MD-Windows-x64-版本号.exe` 作为推荐的单文件下载，同时将完整 `.packaged/MD-win32-x64` 目录复制到独立交付目录后制作 ZIP。两种形式都需包含运行时、项目许可证及第三方 notices。0.1.32 的单文件程序直接内嵌未压缩运行文件，约 338 MB；首次准备后复用当前用户的运行缓存，不安装到系统，也不随 EXE 携带用户设置与草稿。下载体积和缓存磁盘占用需在说明中明确，不把体积取舍写成性能保证。
 
 避免覆盖正在运行的旧版。用户升级时先保存并正常退出旧版，再运行新版单文件；选择 ZIP 的用户需将完整 ZIP 解压到独立目录。若默认应用指向旧位置，移动、改名或升级到新路径后需重新设置。
 
 源码包应来自对应标签，不能从含本地测试文件的整个工作目录直接压缩：
 
 ```powershell
-git archive --format=zip --prefix=MD-source-0.1.30/ --output=../MD-source-0.1.30.zip v0.1.30
+git archive --format=zip --prefix=MD-source-0.1.32/ --output=../MD-source-0.1.32.zip v0.1.32
 ```
 
 使用 `Get-FileHash -Algorithm SHA256` 为单文件 EXE、文件夹 ZIP、源码 ZIP 和两个独立模板生成 `SHA256SUMS.txt`。校验清单中的名称与上传资产完全一致。完整读取 ZIP 内容，检查版本、目录结构及许可证；对待发布的单文件 EXE 运行实际启动检查。
@@ -65,12 +68,12 @@ git archive --format=zip --prefix=MD-source-0.1.30/ --output=../MD-source-0.1.30
 先创建 draft，上传单文件 EXE、文件夹 ZIP、源码 ZIP、两个独立模板和校验清单，共六个资产，确认齐全后再公开。GitHub CLI 示例（路径按交付目录调整）：
 
 ```powershell
-gh release create v0.1.30 --verify-tag --draft --prerelease --title "Markdown-Editor-Mindmap 0.1.30（Markdown 可视化编辑与思维导图）" --notes-file docs/releases/v0.1.30.md
-gh release upload v0.1.30 ../MD-Windows-x64-0.1.30.exe ../MD-Windows-x64-0.1.30.zip ../MD-source-0.1.30.zip assets/templates/SKILL.md assets/templates/SKILL.en.md ../SHA256SUMS.txt
-gh release view v0.1.30 --json url,assets,isDraft,isPrerelease
+gh release create v0.1.32 --verify-tag --draft --prerelease --title "Markdown-Editor-Mindmap 0.1.32（Markdown 可视化编辑与思维导图）" --notes-file docs/releases/v0.1.32.md
+gh release upload v0.1.32 ../MD-Windows-x64-0.1.32.exe ../MD-Windows-x64-0.1.32.zip ../MD-source-0.1.32.zip assets/templates/SKILL.md assets/templates/SKILL.en.md ../SHA256SUMS.txt
+gh release view v0.1.32 --json url,assets,isDraft,isPrerelease
 ```
 
-确认 tag 指向测试的提交、六个资产与本地一致，且前五个文件的 SHA256 与校验清单相符后，使用 `gh release edit v0.1.30 --draft=false` 公开。当前 0.x 版本使用预览标记，README 应链接明确版本或 Releases 列表，不依赖会跳过预览版的 latest 链接。发布前将 README 的下载链接与本次版本一起提交，发布后核对新版本页面、附件下载与公开 API 中的对应条目。当前版本见 [0.1.30 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.30)。
+确认 tag 指向测试的提交、六个资产与本地一致，且前五个文件的 SHA256 与校验清单相符后，使用 `gh release edit v0.1.32 --draft=false` 公开。当前 0.x 版本使用预览标记，README 应链接明确版本或 Releases 列表，不依赖会跳过预览版的 latest 链接。发布前将 README 的下载链接与本次版本一起提交，发布后核对新版本页面、附件下载与公开 API 中的对应条目。当前版本见 [0.1.32 发布页](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.32)。
 
 ## 手动检查更新的发布约定
 

@@ -79,10 +79,26 @@ async function smoke(executable, kind, scenario, directory, fixture) {
     const appInfo = await page.evaluate(() => window.moye.getAppInfo());
     evidence.version = appInfo.version;
     assert.equal(appInfo.version, process.env.MOYE_STARTUP_EXPECT_VERSION || require('../package.json').version, 'The actual release version must match the package under test.');
-    // A visible window can be occluded by another app while this shared desktop
-    // test runs. Request a foreground frame before taking its evidence image.
+    // Playwright's surface capture can stall after startup assertions succeed
+    // on a shared Windows desktop. Capture the native view instead, without
+    // changing the application's launch flags or skipping screenshot failures.
     await page.bringToFront();
-    await page.screenshot({ path: path.join(directory, `${kind}-${scenario}.png`) });
+    const captureSession = await page.context().newCDPSession(page);
+    let captureTimer;
+    try {
+      const frame = await Promise.race([
+        captureSession.send('Page.captureScreenshot', { format: 'png', fromSurface: false, captureBeyondViewport: false }),
+        new Promise((_, reject) => { captureTimer = setTimeout(() => reject(new Error('Native view screenshot timed out.')), 30000); }),
+      ]);
+      const png = Buffer.from(frame.data, 'base64');
+      assert.ok(png.length > 24 && png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), 'Startup evidence must be a PNG.');
+      assert.ok(png.readUInt32BE(16) > 0 && png.readUInt32BE(20) > 0, 'Startup evidence must have nonzero dimensions.');
+      await writeFile(path.join(directory, `${kind}-${scenario}.png`), png);
+      evidence.captureMethod = 'Page.captureScreenshot/fromSurface=false';
+    } finally {
+      clearTimeout(captureTimer);
+      await captureSession.detach().catch(() => {});
+    }
     console.log(`PASS ${kind}/${scenario}: window, document, userData; version ${appInfo.version}`);
   } catch (error) {
     failure = error.message;

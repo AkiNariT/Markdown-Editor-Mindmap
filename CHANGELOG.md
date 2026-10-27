@@ -1,8 +1,8 @@
 # 更新记录
 
-## 0.1.32 — Windows 图片粘贴与拖入（本地测试版）
+## 0.1.32 — Windows 图片粘贴与拖入（公开预览版）
 
-基于 Windows 0.1.30 开发，尚未发布到 GitHub。0.1.31 的 macOS 预览在另一分支发布，尚未经过 Mac 实机验证；本次为 Windows 本地测试，不代表 Mac 兼容性已经确认。
+发布日期以 GitHub Release 页面为准。基于 Windows 0.1.30 开发，本次仅更新 Windows；[0.1.31 macOS 独立预览](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.31) 保持原样，尚未经过 Mac 实机验证。实际检查与限制见 [0.1.32 验证记录](docs/VALIDATION-0.1.32.md)。
 
 - 在 Markdown 编辑模式中按 Ctrl+V 粘贴截图或复制的图片，或拖入图片文件；保留“图片”按钮，支持正文、源码和对照视图。
 - 草稿可先插图再保存；首次保存自动将引用的图片复制到文档旁的同名 .assets 文件夹，并使用相对路径。取消保存保留草稿图片。
