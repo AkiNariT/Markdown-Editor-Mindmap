@@ -34,6 +34,14 @@ jobs:
           $env:MOYE_PORTABLE_EXE = (Resolve-Path ".packaged/portable/MD-Windows-x64-$version.exe").Path
           node tests/packaged-startup.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload the tested Windows development build
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MD-Windows-x64-dev-${{ github.sha }}
+          path: .packaged/MD-win32-x64/
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Keep isolated startup logs and screenshots
         if: always()
         uses: actions/upload-artifact@v4
