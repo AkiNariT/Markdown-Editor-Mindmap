@@ -31,6 +31,21 @@ const branch = () => ({ ...base(), nodes: [...base().nodes,
   { id: 'b', parent: 'a', text: '主题 B', file: null, collapsed: false },
 ] });
 const nodeButton = (view, id) => view.host.querySelector(`[data-node-id="${id}"]`);
+test('unlinking or manually reassigning an outline node clears only its heading destination and undo restores it', async () => {
+  const data = branch(); data.version = 7; data.connections = [];
+  const heading = [{ level: 2, text: 'Original', occurrence: 1 }];
+  Object.assign(data.nodes[1], { file: 'C:/notes/first.md', headingPath: heading });
+  const fixture = setup(data, { onLink: async () => 'C:/notes/second.md' }); const { view } = fixture;
+  try {
+    nodeButton(view, 'a').click();
+    button(view, '取消关联').click();
+    assert.equal(view.getData().nodes[1].file, null); assert.equal(view.getData().nodes[1].headingPath, undefined);
+    view.undo(); assert.deepEqual(view.getData().nodes[1].headingPath, heading);
+    button(view, '关联 Markdown').click(); await tick();
+    assert.equal(view.getData().nodes[1].file, 'C:/notes/second.md'); assert.equal(view.getData().nodes[1].headingPath, undefined);
+    view.undo(); assert.deepEqual(view.getData().nodes[1].headingPath, heading); assert.deepEqual(fixture.errors, []);
+  } finally { fixture.close(); }
+});
 const point = (view, id) => { const card = nodeButton(view, id).closest('.mindmap-node'); return { x: parseFloat(card.style.left), y: parseFloat(card.style.top) }; };
 function pointer(target, type, x, y) {
   const event = new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y });

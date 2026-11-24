@@ -46,7 +46,32 @@ function chapterMaps(data) {
     pages.push({ title: byId.get(chapter).text || t('未命名主题'), map: clone(chapter, allowed) });
   }
   if (pages.length > 100) throw new Error(t('一次最多导出 100 页，请减少一级章节数量。'));
+  addChapterReferences(pages, data.connections || []);
   return pages;
+}
+
+function addChapterReferences(pages, connections) {
+  const locations = new Map(), drawn = new Set();
+  for (const [index, page] of pages.entries()) {
+    // The overview owns the root. For other topics prefer the expanded chapter.
+    for (const node of page.map.nodes) locations.set(node.id, { node, pageNumber: index + 1 });
+    for (const edge of page.map.connections || []) drawn.add(edge.id);
+  }
+  function addReference(local, remote, arrow, label) {
+    const reference = t('{arrow} {topic}（见第 {page} 页）', {
+      arrow, topic: remote.node.text || t('未命名主题'), page: remote.pageNumber,
+    });
+    // Only the export copies receive these notes. The regular node layout wraps
+    // them and includes their full height in SVG, raster and print bounds.
+    local.node.subtitle = [local.node.subtitle, label ? `${reference} — ${label}` : reference].filter(Boolean).join('\n');
+  }
+  for (const edge of connections) {
+    if (drawn.has(edge.id)) continue;
+    const from = locations.get(edge.from), to = locations.get(edge.to);
+    const arrow = edge.arrow === 'both' ? '↔' : '—';
+    addReference(from, to, edge.arrow === 'end' ? '→' : arrow, edge.label);
+    addReference(to, from, edge.arrow === 'end' ? '←' : arrow, edge.label);
+  }
 }
 
 function textBlock(lines, { x, y, fontSize, lineHeight, color, role, weight = 400 }) {

@@ -40,7 +40,7 @@ test('v6 rejects invalid enum, color, subtitle and newer unsupported format valu
   for (const extra of [{ style: 'curve' }, { arrow: 'start' }, { color: 'red' }, { color: '#fff' }, { color: '#112233\n' }]) {
     assert.throws(() => validateMindmap({ ...base(), connections: [{ id: 'edge', from: 'root', to: 'child', ...extra }] }));
   }
-  assert.throws(() => validateMindmap({ ...base(), version: 7 }));
+  assert.throws(() => validateMindmap({ ...base(), version: 8 }));
 });
 
 test('v6 save-as rebases attached Markdown while retaining every new appearance field', () => {

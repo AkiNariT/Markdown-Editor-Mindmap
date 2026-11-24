@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCheckpointController } from '../src/checkpoint.mjs';
+import { createCheckpointController, checkpointDraft } from '../src/checkpoint.mjs';
+
+test('checkpoint payloads keep the exact UTF-8 limit and omit the oversized text', () => {
+  const limit = 8 * 1024 * 1024;
+  const text = '𠮷'.repeat(limit / 4);
+  assert.equal(checkpointDraft(text).draft, text);
+  assert.deepEqual(checkpointDraft(text + 'a'), { draftTooLarge: true });
+  assert.deepEqual(checkpointDraft('a'.repeat(limit + 1)), { draftTooLarge: true });
+});
 
 test('a flush arriving while an unchanged drain is completing still persists its latest snapshot', async () => {
   let value = 0; const written = [];
@@ -28,4 +36,20 @@ test('failed backup retries without losing the draft and composing snapshots are
   composing = false; await controller.flush(); assert.equal(attempts, 1); assert.deepEqual(errors, ['disk full']);
   await controller.flush(); assert.equal(attempts, 2);
   controller.stop(); await controller.flush(); assert.equal(attempts, 2);
+});
+
+test('returning to the last saved draft after an intervening failure clears the error', async () => {
+  let value = 'A'; const written = [], states = [];
+  const controller = createCheckpointController({
+    collect: () => ({ value }), interval: 0,
+    write: async ({ value }) => { written.push(value); if (value === 'B') throw new Error('disk full'); },
+    onState: status => states.push(status),
+  });
+  try {
+    await controller.flush(); value = 'B'; await controller.flush();
+    assert.equal(states.at(-1), 'error');
+    value = 'A'; await controller.flush();
+    assert.equal(states.at(-1), 'saved');
+    assert.deepEqual(written, ['A', 'B', 'A']);
+  } finally { controller.stop(); }
 });

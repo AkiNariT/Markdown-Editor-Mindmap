@@ -40,17 +40,17 @@ function payload(value = doc, editable = value.editable) {
   return { ...data, recovery: { ...(draft !== undefined && (value.dirty || !value.path) ? { draft } : {}), viewState: viewState || {}, visualLossy: visualLossy === true }, skillDocument: Boolean(isSkillDocument(value)), unsupported: value.type === 'mindmap' ? [] : helpers.detectUnsupported(value.content), editable, tabs: tabList() };
 }
 function updateTitle() { win.setTitle((needsSave(doc) ? '• ' : '') + (doc.path ? path.basename(doc.path) : (doc.suggestedName || t('未命名'))) + ' — MD'); }
-function activateDocument(id, notify = true) {
+function activateDocument(id, notify = true, headingPath) {
   const value = documents.get(id); if (!value) throw new Error(t('文档标签已关闭。'));
   doc = value; updateTitle();
-  if (notify) win.webContents.send('moye:document', payload());
+  if (notify) win.webContents.send('moye:document', { ...payload(), ...(headingPath ? { headingPath } : {}) });
 }
-function setDocument(value, editable = false, notify = true) {
+function setDocument(value, editable = false, notify = true, headingPath) {
   if (documents.size >= 80) throw new Error(t('最多打开 80 个标签，请关闭部分标签后重试。'));
   const entry = { ...value, id: randomUUID(), imageKey: randomUUID(), dirty: false, copyOnly: false, editable };
-  documents.set(entry.id, entry); activateDocument(entry.id, notify);
+  documents.set(entry.id, entry); activateDocument(entry.id, notify, headingPath);
 }
-function sessionSnapshot() { return { version: 1, activeId: doc?.id ?? null, documents: [...documents.values()] }; }
+function sessionSnapshot(entries = [...documents.values()]) { return { version: 1, activeId: doc?.id ?? null, documents: entries }; }
 async function persistSession(forgetPrevious = false, snapshot = sessionSnapshot()) {
   const saved = await recoveryStore.save(snapshot);
   // Closed tabs and explicit discards must also disappear from the fallback.
@@ -58,9 +58,10 @@ async function persistSession(forgetPrevious = false, snapshot = sessionSnapshot
   return saved;
 }
 async function checkpoint(value) {
-  recovery.mergeCheckpoint(documents, value, { validateMap: mindmap.parseMindmap });
+  const saved = await recovery.persistCheckpoint(documents, value,
+    entries => recoveryStore.save(sessionSnapshot(entries)), { validateMap: mindmap.parseMindmap });
   if (doc) updateTitle();
-  return persistSession();
+  return saved;
 }
 async function restoreSession() {
   const loaded = await recoveryStore.load(), notices = [];
@@ -224,6 +225,59 @@ async function fileKey(target) {
   try { return path.join(await fs.realpath(path.dirname(target)), path.basename(target)).toLowerCase(); }
   catch (error) { if (error.code !== 'ENOENT') throw error; return path.resolve(target).toLowerCase(); }
 }
+async function reviewShareWarnings(warnings) {
+  const pageSize = 6;
+  const pages = Math.ceil(warnings.length / pageSize);
+  for (let page = 0; page < pages;) {
+    const details = warnings.slice(page * pageSize, (page + 1) * pageSize).map(item => {
+      const kind = item.kind === 'remote' ? t('外部资源') : t('缺失资源');
+      return `${kind} · ${item.document}\n${item.reference}`;
+    });
+    const lastPage = page === pages - 1;
+    const buttons = [t('取消'), lastPage ? t('仍然导出') : t('下一页')];
+    if (page > 0) buttons.push(t('上一页'));
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning', title: t('核对分享资源'),
+      message: t('有 {count} 项资源无法随包离线使用（{page}/{pages}）。', { count: warnings.length, page: page + 1, pages }),
+      detail: details.join('\n\n'), buttons, cancelId: 0, defaultId: 0, noLink: true,
+    });
+    if (response === 0) return false;
+    if (response === 2) page--;
+    else if (lastPage) return true;
+    else page++;
+  }
+  return true;
+}
+async function exportShare(id, content) {
+  const record = documents.get(id);
+  if (!record || record !== doc) throw new Error(t('文档标签已关闭。'));
+  const { prepareShareBundle, writeShareBundle } = await import(pathToFileURL(path.join(root, 'src/share-bundle.mjs')).href);
+  const openFiles = new Map(), nodeDrafts = new Map();
+  for (const value of documents.values()) {
+    if (value.type === 'mindmap') continue;
+    if (value.fileKey) openFiles.set(value.fileKey, value);
+    if (value.pendingMindmapLink?.mapId === id) nodeDrafts.set(value.pendingMindmapLink.nodeId, value);
+  }
+  async function snapshot(value) {
+    if (!value) return null;
+    const response = await askContent(value.id);
+    return { id: value.id, suggestedName: value.suggestedName, content: response.content };
+  }
+  const plan = await prepareShareBundle({ id, type: record.type || 'markdown', path: record.path, suggestedName: record.suggestedName || t('未命名'), content }, {
+    getDocument: async filename => snapshot(openFiles.get(await fileKey(filename))),
+    getNodeDraft: nodeId => snapshot(nodeDrafts.get(nodeId)),
+    resolveDraftImage: imageAssetStore.resolveDraft,
+  });
+  if (!await reviewShareWarnings(plan.warnings)) return { canceled: true };
+  const name = path.parse(plan.rootName).name + '.zip';
+  const result = await dialog.showSaveDialog(win, {
+    title: t('导出可编辑分享包'), defaultPath: path.join(record.path ? path.dirname(record.path) : app.getPath('documents'), name),
+    filters: [{ name: 'ZIP', extensions: ['zip'] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  if (path.extname(result.filePath).toLowerCase() !== '.zip') throw new Error(t('请选择扩展名为 .zip 的分享包文件名。'));
+  return writeShareBundle(plan, result.filePath, { overwrite: true });
+}
 async function renameDocument(id, requestedName) {
   const record = documents.get(id); if (!record) throw new Error(t('文档标签已关闭。'));
   const extension = record.type === 'mindmap' ? 'mdmap' : 'md';
@@ -245,7 +299,7 @@ async function readOpenedDocument(target) {
   if (mindmapPath(target)) return { ...value, type: 'mindmap', mapData: mindmapFiles.resolveMindmapFiles(mindmap.parseMindmap(value.content), value.path) };
   return value;
 }
-async function openDocument(target, notify = true, editable = false) {
+async function openDocument(target, notify = true, editable = false, headingPath) {
   let targets = target ? [target] : [];
   if (!target) {
     const choice = await dialog.showOpenDialog(win, { title: t('打开文档'), properties: ['openFile', 'multiSelections'], filters: [{ name: t('Markdown 与思维导图'), extensions: ['md', 'markdown', 'mdmap'] }] });
@@ -255,8 +309,8 @@ async function openDocument(target, notify = true, editable = false) {
     if (!supportedPath(target)) throw new Error(t('请打开 .md、.markdown 或 .mdmap 文件。'));
     const key = await fileKey(target);
     const existing = [...documents.values()].find(value => value.fileKey === key);
-    if (existing) activateDocument(existing.id, notify);
-    else setDocument({ ...await readOpenedDocument(target), fileKey: key }, editable, notify);
+    if (existing) activateDocument(existing.id, notify, headingPath);
+    else setDocument({ ...await readOpenedDocument(target), fileKey: key }, editable, notify, headingPath);
     await persistSession();
   }
   return { ok: true };
@@ -505,6 +559,15 @@ if (ownsProfile) app.whenReady().then(async () => {
   handle('ready', () => ({ ...payload(), documents: [...documents.values()].map(value => payload(value)), recoveryNotice }));
   handle('session-ready', () => { rendererReady = true; return { ok: true }; });
   handle('checkpoint', checkpoint);
+  handle('export-share', async (...args) => {
+    try { return await exportShare(...args); } catch (error) {
+      if (['EEXIST', 'SHARE_TARGET_CHANGED'].includes(error.code)) throw new Error(t('目标 ZIP 已变化，请重新选择保存位置。'));
+      if (error.code === 'SHARE_SOURCE_CHANGED') throw new Error(t('图片在导出期间已变化，请重新导出。'));
+      if (error.code === 'SHARE_IMAGE_REWRITE_FAILED') throw new Error(t('无法转换部分图片路径，请检查 Markdown 中的图片引用。'));
+      if (error.code === 'SHARE_INVALID_DOCUMENT') throw new Error(t('文档内容无效。'));
+      throw error;
+    }
+  });
   handle('open', () => openDocument()); handle('drop', name => openDocument(name));
   handle('activate', async id => { activateDocument(id); await persistSession(); return { ok: true }; });
   handle('close-tab', closeDocument);
@@ -536,7 +599,9 @@ if (ownsProfile) app.whenReady().then(async () => {
     const { markdownToMindmap } = await import(pathToFileURL(path.join(root, 'src/mindmap-outline.mjs')).href);
     const title = path.parse(record.path || record.suggestedName || t('文档大纲')).name;
     const mapData = markdownToMindmap(content, { title, file: record.path || null });
-    setDocument({ type: 'mindmap', path: null, content: mindmap.serializeMindmap(mapData), mapData, fingerprint: null, suggestedName: title + '.mdmap', namedDraft: true }, true);
+    const serialized = mindmap.serializeMindmap(mapData);
+    if (Buffer.byteLength(serialized, 'utf8') > 8 * 1024 * 1024) throw new Error(t('思维导图内容无效或超过 8 MB。'));
+    setDocument({ type: 'mindmap', path: null, content: serialized, mapData, fingerprint: null, suggestedName: title + '.mdmap', namedDraft: true }, true);
     await persistSession(); return { ok: true };
   });
   handle('mindmap-export', async (id, content, options) => {
@@ -570,9 +635,8 @@ if (ownsProfile) app.whenReady().then(async () => {
     const node = mapData.nodes.find(value => value.id === nodeId);
     if (!node) throw new Error(t('这个节点已不存在。'));
     if (!node.file) throw new Error(t('请先为这个节点关联 Markdown 文件。'));
-    try { await files.readDocument(node.file); }
+    try { return await openDocument(node.file, true, created === true, node.headingPath); }
     catch (error) { if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw new Error(t('关联的 Markdown 文件已移动或删除，请重新关联文件。')); throw error; }
-    return openDocument(node.file, true, created === true);
   });
   handle('rename', renameDocument);
   handle('save', (content, as, sourceSafe) => saveDocument(content, as, doc, sourceSafe === true));
@@ -616,11 +680,12 @@ if (ownsProfile) app.whenReady().then(async () => {
     try {
       // Older renderers provided dirty flags only; keep their close protocol
       // working while accepting the complete lossless snapshot from this build.
-      const complete = states.filter(state => typeof state.draft === 'string');
-      recovery.mergeCheckpoint(documents, { documents: complete }, { validateMap: mindmap.parseMindmap });
-      for (const state of states) documents.get(state.id).dirty = state.dirty;
+      const complete = states.filter(state => typeof state.draft === 'string' || state.draftTooLarge === true);
+      for (const state of states) {
+        if (state.draft === undefined && state.draftTooLarge !== true) documents.get(state.id).dirty = state.dirty;
+      }
       if (documents.has(value.activeId)) doc = documents.get(value.activeId);
-      persistSession().then(waiter.resolve, waiter.reject);
+      checkpoint({ documents: complete }).then(waiter.resolve, waiter.reject);
     } catch (error) { waiter.reject(error); }
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

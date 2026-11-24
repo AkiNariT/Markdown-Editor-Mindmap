@@ -1,10 +1,10 @@
 import { t } from './i18n.mjs';
+import { MAX_RECOVERY_DOCUMENT_BYTES } from './checkpoint.mjs';
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { join, isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const invalidRecovery = message => Object.assign(new Error(message), { code: 'INVALID_RECOVERY' });
-const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
 const MAX_SESSION_BYTES = 128 * 1024 * 1024;
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 128;
@@ -31,7 +31,7 @@ export function sanitizeViewState(value) {
 
 function documentText(value) {
   if (typeof value !== 'string') throw invalidRecovery(t('恢复文档内容无效。'));
-  if (Buffer.byteLength(value, 'utf8') > MAX_DOCUMENT_BYTES) throw invalidRecovery(t('恢复文档超过 8 MB，未写入备份。'));
+  if (Buffer.byteLength(value, 'utf8') > MAX_RECOVERY_DOCUMENT_BYTES) throw invalidRecovery(t('恢复文档超过 8 MB，未写入备份。'));
   return value;
 }
 
@@ -72,21 +72,48 @@ export function normalizeSession(value) {
 // process retains ownership of the saved content, paths and fingerprints.
 export function mergeCheckpoint(records, value, { validateMap } = {}) {
   if (!plain(value) || !Array.isArray(value.documents) || value.documents.length > 80) throw invalidRecovery(t('文档恢复状态无效。'));
-  const seen = new Set();
+  const seen = new Set(), oversizedIds = [];
   const updates = value.documents.map(state => {
     const record = records.get(state?.id);
     if (!record || seen.has(state.id)) throw invalidRecovery(t('文档标签已关闭或重复。'));
     seen.add(state.id);
     if (typeof state.dirty !== 'boolean') throw invalidRecovery(t('文档恢复状态无效。'));
-    const draft = documentText(state.draft);
+    const { draft } = state;
+    if (state.draftTooLarge === true ? draft !== undefined : typeof draft !== 'string') throw invalidRecovery(t('恢复文档内容无效。'));
+    if (state.draftTooLarge === true || Buffer.byteLength(draft, 'utf8') > MAX_RECOVERY_DOCUMENT_BYTES) {
+      // The live tab still needs Save/Discard/Cancel. Keep its last valid
+      // content and the view/format information that belongs to that content.
+      oversizedIds.push(record.id);
+      return { record, changes: { dirty: state.dirty } };
+    }
     if (record.type === 'mindmap' && validateMap) validateMap(draft);
     return { record, changes: { draft, dirty: state.dirty, viewState: sanitizeViewState(state.viewState), visualLossy: state.visualLossy === true } };
   });
   for (const { record, changes } of updates) {
     Object.assign(record, changes);
     if (changes.visualLossy && record.type !== 'mindmap') record.copyOnly = true;
-    if (typeof changes.viewState.editing === 'boolean') record.editable = changes.viewState.editing;
+    if (typeof changes.viewState?.editing === 'boolean') record.editable = changes.viewState.editing;
   }
+  return oversizedIds;
+}
+
+export async function persistCheckpoint(records, value, write, options) {
+  const staged = new Map(Array.from(records, ([id, record]) => [id, { ...record }]));
+  const oversizedIds = mergeCheckpoint(staged, value, options);
+  for (const { id } of value.documents) {
+    const next = staged.get(id), live = records.get(id);
+    live.dirty = next.dirty;
+    if (next.copyOnly) live.copyOnly = true;
+  }
+  const saved = await write([...staged.values()]);
+  // A later oversized draft must fall back to a successful write. Dirty and
+  // copy-only notifications can arrive during I/O and must not be rolled back.
+  for (const { id } of value.documents) {
+    if (oversizedIds.includes(id)) continue;
+    const { draft, viewState, visualLossy, editable } = staged.get(id);
+    Object.assign(records.get(id), { draft, viewState, visualLossy, editable });
+  }
+  return { ...saved, oversizedIds };
 }
 
 // Preparing a final close snapshot must not change live buffers: another tab's

@@ -42,6 +42,14 @@ To check for updates, open **More (…) → Check for updates** or **Settings �
 
 **The separate macOS preview is available on the [0.1.31 release page](https://github.com/AkiNariT/Markdown-Editor-Mindmap/releases/tag/v0.1.31); it has not been tested on Mac hardware.** This 0.1.32 update is for Windows. It does not update the Mac downloads or establish verified Mac compatibility.
 
+## New in the development build
+
+- **Share an editable project.** With a map open, choose **More → Export editable ZIP…**. The top-level `.mdmap` opens the project. Linked Markdown files go in `documents/` and referenced local images go in `assets/`. The export includes current edits from open tabs and unsaved drafts created from map nodes. Extract the entire ZIP on the receiving computer and open the map with this build. Exporting a Markdown document directly puts the Markdown file at the top level.
+- **Open a source heading.** Use **Headings to map** on a saved Markdown file. Double-click a generated heading node to jump to the section and briefly highlight it. Ancestor headings and occurrence numbers distinguish repeated names. These maps use format v7. Public version 0.1.32 reads up to v6. Older maps and manual document links still open in the new build.
+- **Find in the current document.** Press `Ctrl+F` to search, `Enter` or `Shift+Enter` to move between matches, and `Esc` to return to the previous reading position. In Split view, search operates in the active pane.
+
+The exporter lists missing files and external images before writing. Cancel to supply them or continue with the available resources. Ordinary file hyperlinks in Markdown keep their original destinations. To include another Markdown document, link it to a map node. `Ctrl+S` still saves maps and Markdown as individual files.
+
 ## Features
 
 - Read and edit formatted Markdown, including headings, lists, tasks, quotes, tables, images and highlighted code blocks.

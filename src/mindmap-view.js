@@ -146,7 +146,7 @@ export function createMindmapView(initialData, options = {}) {
   const deleteButton = makeButton('删除', requestDelete);
   const linkButton = makeButton('关联 Markdown', linkSelected);
   const openButton = makeButton('打开文件', () => openNode(selected));
-  const unlinkButton = makeButton('取消关联', () => mutate(draft => { draft.nodes.find(item => item.id === selected).file = null; }));
+  const unlinkButton = makeButton('取消关联', () => mutate(draft => { const item = draft.nodes.find(item => item.id === selected); item.file = null; delete item.headingPath; }));
   const collapseButton = makeButton('折叠', () => toggleCollapsed(selected));
   const centerButton = makeButton('居中', centerRoot);
   const compactButton = makeButton('整理布局', () => { if (mutate(draft => { for (const item of draft.nodes) delete item.offset; })) centerRoot(); }, 'mindmap-tool mindmap-compact');
@@ -247,7 +247,7 @@ export function createMindmapView(initialData, options = {}) {
     finishText(); const id = selected; pendingLink = true; renderSelection();
     try {
       const path = await options.onLink(id);
-      if (path && !destroyed && node(id)) mutate(draft => { draft.nodes.find(item => item.id === id).file = path; }, { allowLocked: true });
+      if (path && !destroyed && node(id)) mutate(draft => { const item = draft.nodes.find(item => item.id === id); item.file = path; delete item.headingPath; }, { allowLocked: true });
     } catch (error) { if (!destroyed) report(error); }
     finally { pendingLink = false; if (!destroyed) renderSelection(); }
   }

@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const { constants } = require('node:fs');
 const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
+const publishing = new Set();
 
 function safeName(value) {
   const clean = String(value).replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '').slice(0, 64);
@@ -22,12 +23,95 @@ function rasterDimensions(width, height) {
   return { width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)) };
 }
 
+const identity = info => ({ size: info.size, mtimeMs: info.mtimeMs, ino: info.ino });
+const sameSnapshot = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
 async function snapshot(filePath) {
   try {
     const info = await fs.lstat(filePath);
     if (!info.isFile() || info.isSymbolicLink()) throw new Error('EXPORT_TARGET_NOT_FILE');
-    return { size: info.size, mtimeMs: info.mtimeMs, ino: info.ino };
+    return identity(info);
   } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+
+async function installExclusive(source, target, page) {
+  // Keep the identity of the file we publish, even if another writer later
+  // replaces the directory entry. Rollback may remove only our own output.
+  const staged = page && await snapshot(source);
+  try {
+    await fs.link(source, target);
+    if (page) page.installed = staged;
+    return;
+  } catch (error) {
+    if (!['EXDEV', 'EPERM', 'EACCES', 'ENOTSUP', 'EOPNOTSUPP'].includes(error.code)) throw error;
+  }
+  if (!page) return fs.copyFile(source, target, constants.COPYFILE_EXCL);
+  const output = await fs.open(target, 'wx');
+  try { await output.writeFile(page.buffer); }
+  finally {
+    try { page.installed = identity(await output.stat()); }
+    finally { await output.close(); }
+  }
+}
+
+async function publishChapters(paths, previous, staged, buffers, t) {
+  const folder = await fs.mkdtemp(path.join(path.dirname(paths[0]), '.md-export-backup-'));
+  const pages = paths.map((target, index) => ({ target, original: previous[index], staged: staged[index], buffer: buffers[index] }));
+  const changed = () => new Error(t('导出目标已被其他程序更改，请重新导出。'));
+  let keepBackups = false;
+  try {
+    // Move the confirmed originals out of the way before installing any page.
+    // Verify what was actually moved to catch a replacement racing the rename.
+    for (const page of pages) {
+      if (!page.original) continue;
+      const backup = path.join(folder, path.basename(page.target));
+      if (!sameSnapshot(await snapshot(page.target), page.original)) throw changed();
+      await fs.rename(page.target, backup);
+      page.backup = backup;
+      if (!sameSnapshot(await snapshot(backup), page.original)) throw changed();
+    }
+    for (const page of pages) await installExclusive(page.staged, page.target, page);
+    for (const page of pages) {
+      if (!sameSnapshot(await snapshot(page.target), page.installed)) throw changed();
+      if (page.backup && !sameSnapshot(await snapshot(page.backup), page.original)) throw changed();
+    }
+  } catch (error) {
+    const unresolved = [];
+    for (const page of pages.reverse()) {
+      try {
+        if (page.installed) {
+          if (!sameSnapshot(await snapshot(page.target), page.installed)) throw changed();
+          // Verify again after the rename, so an intervening external replacement
+          // can be put back instead of being unlinked as if it were our output.
+          const removed = path.join(folder, randomUUID() + '.tmp');
+          await fs.rename(page.target, removed);
+          page.removed = removed;
+          // FAT timestamps may not distinguish edits of equal length. A failed
+          // fallback write can also leave only a prefix of the staged bytes.
+          const expected = page.buffer.subarray(0, page.installed.size);
+          if (!sameSnapshot(await snapshot(removed), page.installed) || !(await fs.readFile(removed)).equals(expected)) {
+            await installExclusive(removed, page.target);
+            await fs.unlink(removed); page.removed = null;
+            throw changed();
+          }
+          await fs.unlink(removed); page.removed = null;
+        }
+        if (page.backup) {
+          await installExclusive(page.backup, page.target);
+          await fs.unlink(page.backup); page.backup = null;
+        }
+      } catch {
+        unresolved.push([page.target, page.backup, page.removed].filter(Boolean).join('\n'));
+      }
+    }
+    if (unresolved.length) {
+      keepBackups = true;
+      throw new Error([error.message, t('部分导出文件未能自动恢复，请检查以下路径：'), ...unresolved].join('\n'), { cause: error });
+    }
+    throw error;
+  } finally {
+    if (!keepBackups) await fs.rm(folder, { recursive: true, force: true });
+  }
 }
 
 async function deadline(promise, message) {
@@ -100,25 +184,26 @@ async function exportMindmap(parentWindow, mapData, options = {}, dependencies =
   }
   const buffers = await renderBuffers(result.pages, format, dependencies.BrowserWindow || (format !== 'svg' ? require('electron').BrowserWindow : null), t, result.preset);
   const staged = [];
+  const keys = paths.map(target => process.platform === 'win32' ? target.toLowerCase() : target);
+  if (keys.some(key => publishing.has(key))) throw new Error(t('导出目标已被其他程序更改，请重新导出。'));
+  for (const key of keys) publishing.add(key);
   try {
     for (const [index, target] of paths.entries()) {
       const temporary = path.join(path.dirname(target), `.md-export-${randomUUID()}.tmp`);
-      await fs.writeFile(temporary, buffers[index], { flag: 'wx' }); staged.push(temporary);
+      const file = await fs.open(temporary, 'wx');
+      staged.push(temporary);
+      try { await file.writeFile(buffers[index]); } finally { await file.close(); }
     }
     for (const [index, target] of paths.entries()) {
-      if (JSON.stringify(await snapshot(target)) !== JSON.stringify(previous[index])) throw new Error(t('导出目标已被其他程序更改，请重新导出。'));
+      if (!sameSnapshot(await snapshot(target), previous[index])) throw new Error(t('导出目标已被其他程序更改，请重新导出。'));
     }
-    for (const [index, target] of paths.entries()) {
-      if (previous[index] === null) {
-        // Exclusive creation preserves a file that appears after confirmation.
-        try { await fs.link(staged[index], target); }
-        catch (error) {
-          if (!['EXDEV', 'EPERM', 'EACCES', 'ENOTSUP', 'EOPNOTSUPP'].includes(error.code)) throw error;
-          await fs.copyFile(staged[index], target, constants.COPYFILE_EXCL);
-        }
-      } else await fs.rename(staged[index], target);
-    }
-  } finally { await Promise.all(staged.map(file => fs.rm(file, { force: true }).catch(() => {}))); }
+    if (paths.length > 1) await publishChapters(paths, previous, staged, buffers, t);
+    else if (previous[0] === null) await installExclusive(staged[0], paths[0]);
+    else await fs.rename(staged[0], paths[0]);
+  } finally {
+    for (const key of keys) publishing.delete(key);
+    await Promise.all(staged.map(file => fs.rm(file, { force: true }).catch(() => {})));
+  }
   return { canceled: false, paths, count: paths.length, pageCount: result.pages.length };
 }
 

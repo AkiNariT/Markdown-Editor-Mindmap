@@ -11,6 +11,7 @@
 .document-tab.active{background:var(--hover);color:var(--text)}
 .document-tab [role=tab]{min-width:0;padding:6px 10px;justify-content:flex-start;max-width:187px;border-radius:6px;font-size:12px}
 .document-tab .tab-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.document-tab .backup-paused::before{content:'!';color:#b86144;font-weight:bold}
 .tab-dirty{color:var(--accent);font-size:12px}
 .tab-close{width:26px;height:27px;flex-shrink:0;font-size:17px;border-radius:5px;color:var(--muted)}
 @media(max-width:760px){aside{top:107px}.document-tabs{padding-left:10px;padding-right:10px}}
@@ -56,6 +57,8 @@
 .source-header{height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:15px;padding:0 20px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)}
 .source-position{white-space:nowrap;font-variant-numeric:tabular-nums}
 .source-body{position:relative;display:flex;flex:1;min-height:0;overflow:hidden}
+.source-linked-heading{position:absolute;right:0;pointer-events:none;background:color-mix(in srgb,var(--accent) 22%,transparent)}
+::highlight(md-linked-heading){background-color:color-mix(in srgb,var(--accent) 28%,transparent)}
 .source-input,.source-gutter{font:14px/24px Consolas,"Microsoft YaHei",monospace;tab-size:2}
 .source-input{display:block;width:100%;height:100%;min-width:0;min-height:0;resize:none;border:0;outline:none;border-radius:0;background:var(--bg);color:var(--text);caret-color:var(--accent);padding:16px 20px 40px 64px;white-space:pre;overflow:auto;scrollbar-width:thin}
 .source-gutter{position:absolute;top:16px;left:0;width:52px;text-align:right;padding-right:12px;margin:0;color:var(--muted);pointer-events:none;user-select:none}
@@ -131,3 +134,12 @@ html[lang=en] .text-button,html[lang=en] .mode-button{white-space:nowrap}
 @media(max-width:950px){html[lang=en] .topbar{gap:10px}html[lang=en] .document-label{max-width:140px}}
 @media(max-width:760px){html[lang=en] .topbar{gap:4px}html[lang=en] .text-button{padding:0 6px}html[lang=en] .mode-button{padding:8px}html[lang=en] .view-switch button{padding:0 8px}html[lang=en] .document-label{min-width:40px;max-width:95px}html[lang=en] footer{gap:8px}}
 .outline-to-mindmap{font-size:11px;letter-spacing:0;color:var(--muted);padding:6px 10px;border:1px solid var(--border);border-radius:5px;white-space:nowrap}.outline-to-mindmap:hover{color:var(--text);background:var(--hover)}
+
+.find-bar { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 5px; padding: 5px 12px; border-bottom: 1px solid var(--border); background: var(--paper); }
+#find-scope, #find-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+#find-query { width: 15em; min-width: 3em; max-width: 44%; padding: 4px 7px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+.find-bar button { width: 28px; height: 28px; border-radius: 4px; }
+::highlight(document-find-active) { background: #f6ce5b; color: #201b11; }
+.find-source-overlay { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
+.find-source-line { position: absolute; white-space: pre; color: transparent; }
+.find-source-line mark { background: #f6ce5b; color: #201b11; }

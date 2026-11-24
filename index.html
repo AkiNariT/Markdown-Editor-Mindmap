@@ -48,9 +48,17 @@
           <label id="code-language-picker" class="format-picker" hidden=""><span data-i18n="语言">语言</span><select id="code-language" aria-label="代码语言" data-i18n-aria-label="代码语言"><option value="" data-i18n="自动识别">自动识别</option><option value="plaintext" data-i18n="纯文本">纯文本</option><option value="python">Python</option><option value="javascript">JavaScript</option><option value="typescript">TypeScript</option><option value="xml">HTML / XML</option><option value="css">CSS</option><option value="json">JSON</option><option value="bash">Bash / Shell</option><option value="sql">SQL</option><option value="yaml">YAML</option><option value="java">Java</option><option value="c">C</option><option value="cpp">C++</option><option value="csharp">C#</option><option value="go">Go</option><option value="rust">Rust</option><option value="php">PHP</option><option value="ruby">Ruby</option><option value="markdown">Markdown</option><option value="swift">Swift</option><option value="kotlin">Kotlin</option><option value="lua">Lua</option><option value="r">R</option></select></label>
         </div>
       </div>
+      <div id="find-bar" class="find-bar" role="search" aria-label="文内查找" data-i18n-aria-label="文内查找" hidden>
+        <span id="find-scope"></span>
+        <input id="find-query" type="text" autocomplete="off" spellcheck="false" aria-label="查找文字" placeholder="查找文字" data-i18n-aria-label="查找文字" data-i18n-placeholder="查找文字">
+        <output id="find-count" aria-live="polite"></output>
+        <button id="find-previous" type="button" aria-label="上一个匹配" title="上一个匹配" data-i18n-aria-label="上一个匹配" data-i18n-title="上一个匹配">↑</button>
+        <button id="find-next" type="button" aria-label="下一个匹配" title="下一个匹配" data-i18n-aria-label="下一个匹配" data-i18n-title="下一个匹配">↓</button>
+        <button id="find-close" type="button" aria-label="关闭查找" title="关闭查找" data-i18n-aria-label="关闭查找" data-i18n-title="关闭查找">×</button>
+      </div>
       <div class="document-content">
       <div id="source-container" hidden=""></div>
-      <div class="canvas">
+      <div class="canvas" tabindex="-1">
         <div id="protection" hidden=""><i data-icon="info"></i><span id="protection-text"></span></div>
         <section id="frontmatter-info" class="metadata-card" hidden="" aria-label="文档信息" data-i18n-aria-label="文档信息">
           <div id="skill-fields" hidden="">
@@ -82,6 +90,8 @@
   </div>
   <div id="more-menu" class="dropdown" hidden="" role="menu" aria-label="更多操作" data-i18n-aria-label="更多操作">
     <button id="save-as" role="menuitem"><i data-icon="copy"></i><span data-i18n="另存为">另存为</span><span class="shortcut">Ctrl+Shift+S</span></button>
+    <button id="share-project" role="menuitem"><i data-icon="folder"></i><span data-i18n="导出可编辑分享包…">导出可编辑分享包…</span></button>
+    <button id="find-open" role="menuitem"><span data-i18n="文内查找">文内查找</span><span class="shortcut">Ctrl+F</span></button>
     <button id="undo" role="menuitem"><i data-icon="undo"></i><span data-i18n="撤销">撤销</span><span class="shortcut">Ctrl+Z</span></button>
     <button id="redo" role="menuitem"><i data-icon="redo"></i><span data-i18n="重做">重做</span><span class="shortcut">Ctrl+Y</span></button>
     <div class="menu-divider"></div>

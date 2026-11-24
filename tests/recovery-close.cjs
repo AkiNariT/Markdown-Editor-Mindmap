@@ -87,6 +87,45 @@ async function beginCheckpoint(page) {
   const base = path.resolve(__dirname, '../.desktop-test'); await mkdir(base, { recursive: true });
   const directory = await mkdtemp(path.join(base, 'recovery-close-'));
 
+  // A large live draft cannot replace its recovery copy. It still participates
+  // in Save/Discard/Cancel, while the remaining tabs keep checkpointing.
+  {
+    const profile = path.join(directory, 'oversized-profile'), big = path.join(directory, 'big.md'), other = path.join(directory, 'other.md');
+    await writeFile(big, 'big original'); await writeFile(other, 'other original');
+    const handle = await launch(profile, [big, other]);
+    const bigId = await select(handle, big); await edit(handle, 'last good');
+    await stored(profile, state => state.documents.some(item => item.id === bigId && item.draft === 'last good'));
+    async function exceedLimit() {
+      await handle.page.locator('.source-input:visible').evaluate(node => {
+        node.value = ('界'.repeat(512) + '\n').repeat(5500);
+        node.setSelectionRange(0, 0);
+        node.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+      });
+      await handle.page.waitForFunction(() => document.querySelector('#recovery-state').title.includes('big.md'));
+    }
+    await exceedLimit();
+    await select(handle, other); await edit(handle, 'updated in a different tab');
+    await stored(profile, state => state.documents.some(item => item.id === bigId && item.draft === 'last good') &&
+      state.documents.some(item => item.path === other && item.draft === 'updated in a different tab'));
+    await replies(handle, [2]);
+    assert.equal((await api(handle.page, 'closeTab', bigId)).canceled, true);
+    await select(handle, big);
+    assert.ok(await handle.page.locator('.source-input:visible').evaluate(node => new TextEncoder().encode(node.value).length > 8 * 1024 * 1024));
+    await edit(handle, 'within the limit again');
+    await stored(profile, state => state.documents.some(item => item.id === bigId && item.draft === 'within the limit again'));
+    await handle.page.waitForFunction(() => !document.querySelector('#recovery-state').title.includes('big.md'));
+    await exceedLimit();
+    await replies(handle, [1]);
+    await closeWindow(handle);
+    for (const name of ['session.json', 'session.backup.json']) {
+      const session = JSON.parse(await readFile(path.join(profile, name), 'utf8'));
+      assert.ok(session.documents.every(item => !item.dirty && item.draft === undefined));
+    }
+    assert.equal(await readFile(big, 'utf8'), 'big original');
+    assert.equal(await readFile(other, 'utf8'), 'other original');
+    console.log('PASS oversized draft isolation, warning, shrink, cancel and discard');
+  }
+
   // An explicit discard keeps a file tab at its baseline and removes a scratch
   // tab from both primary and fallback snapshots.
   {

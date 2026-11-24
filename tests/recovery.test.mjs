@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, readdir, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createRecoveryStore, normalizeSession, mergeCheckpoint, sanitizeViewState, sessionAfterDiscard } from '../src/recovery.mjs';
+import { createRecoveryStore, normalizeSession, mergeCheckpoint, persistCheckpoint, sanitizeViewState, sessionAfterDiscard } from '../src/recovery.mjs';
 
 const baseline = { id: 'one', type: 'markdown', path: null, content: '# 原文\r\n', fingerprint: null, dirty: false };
 const session = (documents = [baseline]) => ({ version: 1, activeId: documents[0]?.id ?? null, documents });
@@ -127,6 +127,58 @@ test('checkpoint validation is atomic and rejects invalid mindmap drafts', () =>
   assert.throws(() => mergeCheckpoint(records, { documents: [{ id: 'one', draft: 'after', dirty: true }, { id: 'map', draft: 'bad map', dirty: true }] }, { validateMap: () => { throw new Error('invalid map'); } }), /invalid map/);
   assert.equal(records.get('one').draft, 'before');
   assert.throws(() => mergeCheckpoint(records, { documents: [{ id: 'one', draft: 'after', dirty: 'false' }] }), /状态|文档/);
+});
+
+test('an oversized tab keeps its previous recoverable draft while other tabs advance', async t => {
+  const { directory, store } = await fixture(t);
+  const records = new Map([
+    ['one', { ...baseline, draft: 'last good', dirty: true, visualLossy: true }],
+    ['two', { ...baseline, id: 'two', draft: 'old', dirty: true }],
+    ['new', { ...baseline, id: 'new' }],
+  ]);
+  const snapshot = () => session([...records.values()]);
+  await store.save(snapshot());
+  // Older renderers send the full string. Current renderers send the size marker.
+  const skipped = mergeCheckpoint(records, { documents: [
+    { id: 'one', draft: '中'.repeat(Math.ceil(8 * 1024 * 1024 / 3)), dirty: true },
+    { id: 'two', draft: 'newer', dirty: true },
+    { id: 'new', draftTooLarge: true, dirty: true },
+  ] });
+  assert.deepEqual(skipped, ['one', 'new']);
+  assert.equal(records.get('new').dirty, true, 'closing must still ask about the live draft');
+  await store.save(snapshot());
+  const loaded = (await createRecoveryStore(directory).load()).session.documents;
+  assert.deepEqual(loaded.map(entry => entry.draft), ['last good', 'newer', undefined]);
+  assert.equal(loaded[0].visualLossy, true);
+  assert.deepEqual(mergeCheckpoint(records, { documents: [{ id: 'one', draft: 'small again', dirty: true }] }), []);
+  await store.save(snapshot());
+  assert.equal((await store.load()).session.documents[0].draft, 'small again');
+  assert.throws(() => mergeCheckpoint(records, { documents: [{ id: 'new', draftTooLarge: true, draft: 'ambiguous', dirty: true }] }), /恢复/);
+});
+
+test('a failed checkpoint cannot supply the recovery copy for a subsequent oversized draft', async t => {
+  const { store } = await fixture(t);
+  const records = new Map([['one', { ...baseline }], ['two', { ...baseline, id: 'two' }]]);
+  const write = entries => store.save(session(entries));
+  const snapshot = (first, second) => ({ documents: [{ id: 'one', dirty: true, ...first }, { id: 'two', dirty: true, draft: second }] });
+  await persistCheckpoint(records, snapshot({ draft: 'durable A' }, 'old'), write);
+  await assert.rejects(persistCheckpoint(records, snapshot({ draft: 'failed B', viewState: { view: 'compare' } }, 'also failed'),
+    async () => { throw new Error('disk full'); }), /disk full/);
+  assert.equal(records.get('one').draft, 'durable A');
+  assert.deepEqual(records.get('one').viewState, {});
+  const result = await persistCheckpoint(records, snapshot({ draftTooLarge: true }, 'current'), write);
+  assert.deepEqual(result.oversizedIds, ['one']);
+  assert.deepEqual((await store.load()).session.documents.map(entry => entry.draft), ['durable A', 'current']);
+});
+
+test('dirty and copy-only signals received during a checkpoint take precedence over its captured flags', async () => {
+  const record = { ...baseline, draft: 'before' }, records = new Map([['one', record]]);
+  await persistCheckpoint(records, { documents: [{ id: 'one', draft: 'A', dirty: false, visualLossy: false }] }, async entries => {
+    assert.equal(entries[0].draft, 'A');
+    assert.equal(record.draft, 'before');
+    record.dirty = true; record.copyOnly = true;
+  });
+  assert.equal(record.draft, 'A'); assert.equal(record.dirty, true); assert.equal(record.copyOnly, true);
 });
 
 test('a checkpoint after saving cannot replace the newer authoritative baseline or fingerprint', () => {

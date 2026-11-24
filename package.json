@@ -39,6 +39,9 @@
     "test:updates": "node tests/updates.cjs",
     "test:mindmap-drafts": "node tests/mindmap-drafts.cjs",
     "test:mindmap-features": "node tests/mindmap-features.cjs",
+    "test:heading-links": "node tests/mindmap-heading-open.cjs",
+    "test:find": "node tests/document-find.cjs",
+    "test:share": "node tests/share-project.cjs",
     "package:portable": "npm run build && npm run package && node scripts/package-portable.mjs",
     "test:portable": "node tests/portable.cjs",
     "test:performance": "node tests/performance.cjs"
@@ -64,14 +67,17 @@
     "@tiptap/core": "3.31.4",
     "@tiptap/extension-code-block-lowlight": "3.31.4",
     "@tiptap/extension-image": "3.31.4",
+    "@tiptap/extension-link": "3.31.4",
     "@tiptap/extension-list": "3.31.4",
+    "@tiptap/extension-paragraph": "3.31.4",
     "@tiptap/extension-placeholder": "3.31.4",
     "@tiptap/extension-table": "3.31.4",
     "@tiptap/markdown": "3.31.4",
     "@tiptap/starter-kit": "3.31.4",
     "entities": "8.1.0",
     "lowlight": "3.3.0",
-    "yaml": "2.9.1"
+    "yaml": "2.9.1",
+    "yazl": "3.3.1"
   },
   "devDependencies": {
     "@electron/fuses": "1.8.0",

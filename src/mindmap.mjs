@@ -22,7 +22,7 @@ export function createMindmap() {
 
 export function validateMindmap(value) {
   if (!isRecord(value) || value.format !== 'md-mindmap') throw new Error(t('不是有效的 MD 思维导图文件。'));
-  if (![1, 2, 3, 4, 5, 6].includes(value.version)) throw new Error(t('暂不支持这个思维导图版本。'));
+  if (![1, 2, 3, 4, 5, 6, 7].includes(value.version)) throw new Error(t('暂不支持这个思维导图版本。'));
   if (Object.hasOwn(value, 'lineStyle') && (value.version < 6 || !['curve', 'orthogonal', 'straight'].includes(value.lineStyle))) throw new Error(t('连线样式无效，需要使用第 6 版格式与支持的样式。'));
   if (Object.hasOwn(value, 'nodeSize') && (value.version < 6 || !['compact', 'standard', 'wide'].includes(value.nodeSize))) throw new Error(t('节点尺寸无效，需要使用第 6 版格式与支持的尺寸。'));
   if (Object.hasOwn(value, 'theme') && (value.version < 5 || !mapThemes.includes(value.theme))) throw new Error(t('整图风格无效，需要使用第 5 版格式与支持的风格。'));
@@ -37,6 +37,15 @@ export function validateMindmap(value) {
     if (!validFile(item.file)) throw new Error(t('节点只能关联本地 .md 或 .markdown 文件，路径不能包含网址或控制字符。'));
     if (typeof item.collapsed !== 'boolean') throw new Error(t('节点折叠状态无效。'));
     const normalized = { id: item.id, parent: item.parent, text: item.text, file: item.file, collapsed: item.collapsed };
+    if (Object.hasOwn(item, 'headingPath')) {
+      const parts = item.headingPath;
+      if (value.version < 7 || !item.file || !Array.isArray(parts) || !parts.length || parts.length > 6 ||
+          !parts.every((part, i) => isRecord(part) && Number.isInteger(part.level) && part.level > (i ? parts[i - 1].level : 0) && part.level <= 6 &&
+            typeof part.text === 'string' && part.text.length <= 500 && Number.isInteger(part.occurrence) && part.occurrence >= 1 && part.occurrence <= 1000)) {
+        throw new Error(t('关联标题路径无效，需要第 7 版导图及有效的标题层级与序号。'));
+      }
+      normalized.headingPath = parts.map(({ level, text, occurrence }) => ({ level, text, occurrence }));
+    }
     if (Object.hasOwn(item, 'subtitle')) {
       if (value.version < 6 || typeof item.subtitle !== 'string' || item.subtitle.length > 500) throw new Error(t('节点副标题无效，需要使用第 6 版格式，且不超过 500 个字符。'));
       normalized.subtitle = item.subtitle;

@@ -13,6 +13,8 @@ const { mkdir, mkdtemp, writeFile, readFile } = require('node:fs/promises');
   try {
     const node = (id, parent, text, extra = {}) => ({ id, parent, text, file: null, collapsed: false, ...extra });
     const map = { format: 'md-mindmap', version: 6, root: 'root', theme: 'crystal', lineStyle: 'orthogonal', nodeSize: 'wide', nodes: [node('root', null, '教学知识图谱 <安全文字>'), node('a', 'root', '第一章：世界局势', { background: '#dbeafe', color: '#1e3a5f', subtitle: '时代条件 → 自身回应' }), node('b', 'root', '第二章：实践方法', { background: '#dcf0df', color: '#244b35' }), node('a1', 'a', '百年未有之大变局：国际体系与全球治理深刻调整'), node('b1', 'b', '坚持系统观念，统筹发展与安全')], connections: [{ id: 'relation', from: 'a1', to: 'b1', label: '理论联系实践', style: 'solid', arrow: 'both', color: '#724523' }] };
+    map.nodes.push(node('a2', 'a1', '现场观察'), node('b2', 'b1', '案例验证'));
+    map.connections.push({ id: 'cross-chapter', from: 'a2', to: 'b2', label: '实证依据', arrow: 'end' });
     const results = {};
     for (const format of ['svg', 'png', 'pdf']) {
       results[format] = await app.evaluate(async ({ BrowserWindow, dialog }, { helper, map, directory, format }) => {
@@ -28,6 +30,10 @@ const { mkdir, mkdtemp, writeFile, readFile } = require('node:fs/promises');
       assert.equal(results[format].result.paths.length, format === 'pdf' ? 1 : 3);
     }
     for (const file of results.svg.result.paths) { const contents = await readFile(file, 'utf8'); assert.ok(contents.startsWith('<svg')); assert.ok(!contents.includes('<foreignObject')); }
+    for (const [index, expected] of [[1, '→ 案例验证（见第 3 页）'], [2, '← 现场观察（见第 2 页）']]) {
+      const text = (await readFile(results.svg.result.paths[index], 'utf8')).replace(/<[^>]*>/g, '');
+      assert.ok(text.includes(expected + ' — 实证依据'));
+    }
     const png = await readFile(results.png.result.paths[0]);
     assert.equal(png.subarray(1, 4).toString(), 'PNG');
     assert.equal(png.readUInt32BE(16), 1920); assert.equal(png.readUInt32BE(20), 1200);

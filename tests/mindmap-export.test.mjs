@@ -52,6 +52,29 @@ test('long titles and subtitles remain complete in vector text and grow node bou
   assert.ok(page.height > 400);
 });
 
+test('chapter pages retain deep links to other chapters and the overview without changing the map', () => {
+  const data = map([
+    node('root', null, 'Root'), node('a', 'root'), node('a1', 'a'),
+    node('a2', 'a1', 'Details', { subtitle: 'Original note' }),
+    node('b', 'root', 'b', { collapsed: true }), node('b1', 'b'), node('b2', 'b1', 'Details'),
+  ], { connections: [
+    { id: 'cross', from: 'a2', to: 'b2', arrow: 'end', label: '<dependency>' },
+    { id: 'overview', from: 'root', to: 'a2', arrow: 'both' },
+    { id: 'local', from: 'a1', to: 'a2', label: 'Same chapter' },
+  ] });
+  const original = structuredClone(data);
+  const [overview, a, b] = buildMindmapExportPages(data, { scope: 'chapters' }).pages.map(xml);
+  const note = (page, id) => page.querySelector(`[data-node="${id}"] [data-role="subtitle"]`).textContent;
+  assert.match(note(a, 'a2'), /Original note.*→ Details（见第 3 页） — <dependency>/);
+  assert.match(note(b, 'b2'), /← Details（见第 2 页） — <dependency>/);
+  assert.match(note(a, 'a2'), /↔ Root（见第 1 页）/);
+  assert.match(note(overview, 'root'), /↔ Details（见第 2 页）/);
+  assert.ok(a.querySelector('[data-connection="local"]'));
+  assert.doesNotMatch(note(a, 'a2'), /Same chapter/);
+  assert.equal(a.querySelector('dependency'), null, 'labels are escaped SVG text');
+  assert.deepEqual(data, original);
+});
+
 test('relationships retain requested arrows, color, line style and safe labels', () => {
   const data = map([node('root', null), node('child', 'root')], { lineStyle: 'orthogonal', connections: [{ id: 'r', from: 'root', to: 'child', label: '<说明>', style: 'solid', arrow: 'both', color: '#ab1234' }] });
   const doc = xml(buildMindmapExportPages(data).pages[0]);

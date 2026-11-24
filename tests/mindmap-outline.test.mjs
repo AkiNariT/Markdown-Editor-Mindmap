@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { parseMindmap, serializeMindmap, validateMindmap } from '../src/mindmap.mjs';
 const outline = await import('../src/mindmap-outline.mjs').catch(error => { if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error; return {}; });
 
 test('Markdown headings produce an ordered hierarchy without treating fenced examples or body text as topics', () => {
@@ -42,4 +43,41 @@ test('inline-code text remains literal while ordinary heading entities and empha
 test('heading import decodes HTML named entities without changing inline code or unterminated references', () => {
   const result = outline.markdownToMindmap('# Copyright &copy; 2026\n## A &mdash; B &hellip;\n### `&copy; &mdash; &hellip;` &copy');
   assert.deepEqual(result.nodes.map(n => n.text), ['Copyright © 2026', 'A — B …', '&copy; &mdash; &hellip; &copy']);
+});
+
+test('saved outline links retain ancestor levels and same-name sibling occurrences after reopening', () => {
+  const file = 'C:/notes/book.md';
+  const source = '# Book\n\n## A\n### Details\n\n## B\n### Details\n### Details\n';
+  const map = parseMindmap(serializeMindmap(outline.markdownToMindmap(source, { file })));
+  assert.equal(map.version, 7);
+  const path = map.nodes.at(-1).headingPath;
+  assert.deepEqual(path, [
+    { level: 1, text: 'Book', occurrence: 1 }, { level: 2, text: 'B', occurrence: 1 },
+    { level: 3, text: 'Details', occurrence: 2 },
+  ]);
+  const changed = source.replace('## B', '## Added\n### Details\n\n## B');
+  const heading = outline.findMarkdownHeading(changed, path);
+  assert.equal(heading.start, changed.lastIndexOf('### Details'));
+  assert.equal(changed.slice(heading.start, heading.end), '### Details');
+  assert.equal(outline.findMarkdownHeading(changed.slice(0, heading.start), path), undefined);
+  const draft = outline.markdownToMindmap(source);
+  assert.equal(draft.version, 6); assert.ok(draft.nodes.every(node => !node.headingPath));
+  const synthetic = outline.markdownToMindmap('# First\n# Second', { file }).nodes;
+  assert.equal(synthetic[0].headingPath, undefined);
+  assert.equal(synthetic[2].headingPath[0].text, 'Second');
+  for (const bad of [[], [{ level: 9, text: 'x', occurrence: 1 }], [{ level: 1, text: 'x', occurrence: 0 }], [path[0], path[0]]]) {
+    const invalid = structuredClone(map); invalid.nodes[0].headingPath = bad;
+    assert.throws(() => validateMindmap(invalid));
+  }
+  assert.throws(() => validateMindmap({ ...map, version: 6 }));
+  const invalid = structuredClone(map); invalid.nodes[0].file = null;
+  assert.throws(() => validateMindmap(invalid));
+});
+
+test('source heading ranges match the textarea after metadata, definitions, fenced code and nested headings', () => {
+  const text = '\ufeff---\r\ntitle: Test\r\n---\r\n\r\n[x]: /note\r\n\r\n> ## Target\r\n\r\n```\r\n## Target\r\n```\r\n\r\nTarget\r\n------\r\n';
+  const map = outline.markdownToMindmap(text, { file: 'C:/notes/refs.md' });
+  const heading = outline.findMarkdownHeading(text, map.nodes.at(-1).headingPath);
+  const source = text.replace(/^\ufeff/, '').replace(/\r\n/g, '\n');
+  assert.equal(heading.start, source.lastIndexOf('Target')); assert.equal(source.slice(heading.start, heading.end), 'Target\n------');
 });

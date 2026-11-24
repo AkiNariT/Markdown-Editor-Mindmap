@@ -1,4 +1,4 @@
-import { createEditor, imageRangeInCode, insertEditorImages } from './editor.js';
+import { createEditor, imageRangeInCode, insertEditorImages, editorLinkTarget, applyEditorLink } from './editor.js';
 import { imageFilesFromTransfer, protectTextInputImagePaste, readImagePayloads, imageMarkdown, importAtTarget, imageURLForDocument } from './image-transfer.mjs';
 import { safeLink, detectUnsupported } from './document.mjs';
 import { splitFrontmatter, composeMarkdown } from './frontmatter.mjs';
@@ -7,11 +7,13 @@ import { fillIcons, icon } from './icons.js';
 import { TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { createMindmapView } from './mindmap-view.js';
+import { revealLinkedHeading } from './mindmap-heading-navigation.mjs';
 import { parseMindmap, serializeMindmap } from './mindmap.mjs';
 import { captureReadingPosition, restoreReadingPosition } from './zoom.mjs';
-import { createCheckpointController } from './checkpoint.mjs';
+import { checkpointDraft, createCheckpointController } from './checkpoint.mjs';
 import { createUpdatesUI } from './updates-ui.js';
 import { createWindowsDefaultUI } from './windows-default-ui.mjs';
+import { createDocumentFind } from './document-find.mjs';
 import { t, setLocale, getLocale, onLocaleChange } from './i18n.mjs';
 
 const $ = id => document.getElementById(id);
@@ -25,8 +27,24 @@ const sessions = new Map();
 let tabOrder = [];
 let composing = false;
 let recoveryStatus = '', recoveryFailure = '';
+let oversizedDrafts = new Set();
 let changingLanguage = false;
 const windowsDefault = createWindowsDefaultUI({ api, t, document, canAct: () => !working && !closing });
+let lastFindPane = 'render';
+const documentFind = createDocumentFind({
+  document,
+  onOpen: hideMenus,
+  canOpen: () => loaded && !isMindmap() && !working && !closing && !hasComposition() && !document.querySelector('dialog[open]'),
+  getSurface: () => ({
+    canvas: document.querySelector('.canvas'), visual: editor.view.dom, source: sessions.get(current.id).source.input,
+    scope: viewMode === 'compare' ? lastFindPane : viewMode,
+  }),
+});
+for (const event of ['pointerdown', 'focusin']) document.addEventListener(event, ({ target }) => {
+  if ($('source-container').contains(target)) lastFindPane = 'source';
+  else if (target.closest('.canvas')) lastFindPane = 'render';
+}, true);
+$('find-open').addEventListener('click', documentFind.open);
 // Keep references to application chrome before any document content is mounted.
 const localizedElements = [...document.querySelectorAll('[data-i18n], [data-i18n-title], [data-i18n-aria-label], [data-i18n-placeholder], [data-i18n-alt]')];
 function applyStaticTranslations() {
@@ -47,6 +65,7 @@ function refreshLanguage() {
   applyStaticTranslations();
   windowsDefault.refreshLanguage();
   updates.refreshLanguage();
+  documentFind.refreshLanguage();
   $('theme-label').textContent = t(document.body.classList.contains('dark') ? '浅色外观' : '黑色外观');
   $('toast').hidden = true;
   if (!loaded || !state) return;
@@ -61,7 +80,14 @@ function refreshLanguage() {
 }
 const checkpoint = createCheckpointController({
   collect: collectRecovery,
-  write: async value => unpack(await api.checkpoint(value)),
+  write: async value => {
+    const result = unpack(await api.checkpoint(value));
+    const next = new Set(result.oversizedIds);
+    if (next.size !== oversizedDrafts.size || [...next].some(id => !oversizedDrafts.has(id))) {
+      oversizedDrafts = next;
+      renderTabs();
+    }
+  },
   onState: (status, error) => { recoveryStatus = status; recoveryFailure = error?.message || ''; updateRecoveryStatus(); }
 });
 fillIcons();
@@ -80,12 +106,20 @@ function collectRecovery() {
   if (!loaded || !current || closing || hasComposition()) return null;
   stashActive();
   return { activeId: current.id, documents: [...sessions.values()].map(state => ({
-    id: state.current.id, draft: sessionContent(state, false), dirty: Boolean(state.dirty || (!state.current.path && state.current.namedDraft)),
+    id: state.current.id, ...checkpointDraft(sessionContent(state, false)), dirty: Boolean(state.dirty || (!state.current.path && state.current.namedDraft)),
     visualLossy: Boolean(state.visualLossy), viewState: captureView(state)
   })) };
 }
 function updateRecoveryStatus() {
   const node = $('recovery-state'); if (!node) return;
+  const blocked = [...oversizedDrafts].map(id => sessions.get(id)?.current).filter(Boolean);
+  if (blocked.length && recoveryStatus !== 'error') {
+    const names = blocked.map(value => value.path || value.suggestedName || t('未命名'));
+    node.textContent = t('{count} 个标签的草稿超过 8 MB', { count: blocked.length });
+    node.title = [t('以下标签的最新修改尚未备份。将草稿缩小到 8 MB 以内后会自动恢复备份。'), ...names].join('\n');
+    node.classList.add('recovery-error');
+    return;
+  }
   const pending = [...sessions.values()].some(state => state.dirty || (!state.current.path && state.current.namedDraft));
   node.textContent = recoveryStatus === 'error' ? t('备份失败') : recoveryStatus === 'saving' ? t('正在备份…') : recoveryStatus === 'saved' ? (pending ? t('草稿已备份') : t('会话已保留')) : '';
   node.classList.toggle('recovery-error', recoveryStatus === 'error');
@@ -137,6 +171,7 @@ function visualView() { return viewMode === 'render' || viewMode === 'compare'; 
 function readDocumentParts(value) { const parts = splitFrontmatter(value.content); if (parts && !value.skillDocument) parts.skill = null; return parts; }
 function setMetadataEditable() { for (const id of ['skill-name', 'skill-description']) $(id).readOnly = !editing || !visualView() || working || closing; }
 function setInputPermissions() {
+  $('find-open').disabled = isMindmap() || working || closing;
   windowsDefault.setLocked(working || closing);
   editor?.setEditable(editing && visualView() && !working && !closing, false); setMetadataEditable();
   const state = sessions.get(current?.id);
@@ -144,6 +179,7 @@ function setInputPermissions() {
   state?.map?.setLocked?.(working || closing);
   state?.map?.setEditable(editing);
   for (const id of ['open', 'new', 'save', 'save-as', 'mode', 'skill-template', 'zoom-out', 'zoom-reset', 'zoom-in', 'rename', 'name-confirm', 'name-cancel', 'new-mindmap', 'outline-to-mindmap', 'settings', 'check-updates', 'settings-check-updates']) $(id).disabled = working || closing;
+  $('share-project').disabled = working || closing || !current;
   $('filename').readOnly = working || closing;
   for (const button of $('view-switch').querySelectorAll('button')) button.disabled = working || closing;
   $('sync-scroll').disabled = working || closing;
@@ -151,6 +187,7 @@ function setInputPermissions() {
 }
 function sourceSafe(state) { return state?.authority === 'source' && !state.visualLossy; }
 function markVisualChange(state) {
+  documentFind.close({ focus: false, restore: false });
   if (viewMode === 'compare') {
     clearTimeout(state.previewTimer); state.previewPending = false; const revision = ++state.previewRevision;
     const projected = state.editor.getMarkdown().trimEnd() === state.projection.markdown && metadataSignature() === state.projection.metadata;
@@ -241,6 +278,7 @@ function contentFor(id) {
   return sessionContent(state);
 }
 function sourceInput(state, context) {
+  documentFind.close({ focus: false, restore: false });
   if (context) state.visualLossy = context.lossy;
   state.authority = 'source'; state.previewPending = true;
   state.visualOriginal = fromSourceText(state.source.getText(), state.current.content);
@@ -251,6 +289,7 @@ function sourceInput(state, context) {
   if (viewMode === 'compare') refreshPreview(state).catch(error => toast(error.message, true));
 }
 function replacePreview(state, text) {
+  if (current?.id === state.current.id) documentFind.close({ focus: false, restore: false });
   const active = current?.id === state.current.id, wasLoaded = loaded; if (active) loaded = false;
   const canvas = document.querySelector('.canvas'), scroll = canvas.scrollTop;
   const selection = state.editor.state.selection;
@@ -298,6 +337,8 @@ function applyView(state) {
 }
 async function switchView(next) {
   if (!current || isMindmap() || next === viewMode) return;
+  documentFind.close({ focus: false });
+  if (next === 'compare') lastFindPane = viewMode;
   await action(async () => {
     stashActive(); const state = sessions.get(current.id);
     const origin = viewMode === 'source' ? state.source.input : document.querySelector('.canvas');
@@ -320,6 +361,7 @@ async function switchView(next) {
   });
 }
 function syncScroll(from) {
+  if (documentFind.moving) return;
   const state = sessions.get(current?.id); if (!state || viewMode !== 'compare' || !state.syncScroll || working || closing || scrollSyncing) return;
   const source = state.source.input, preview = document.querySelector('.canvas');
   const origin = from === 'source' ? source : preview, target = from === 'source' ? preview : source;
@@ -347,6 +389,7 @@ function changeZoom(value) {
   if (viewMode !== 'source') restoreReadingPosition(canvas, state.viewAnchors[viewMode]);
   if (viewMode !== 'render') { state.source.input.scrollTop = state.sourceScroll; state.source.input.scrollLeft = state.sourceLeft; }
   state.source.refresh(); stashActive(); updateSelection();
+  documentFind.layoutChanged();
   requestAnimationFrame(() => { scrollSyncing = false; });
 }
 function stepZoom(direction) { changeZoom((sessions.get(current?.id)?.zoom || 100) + direction * 10); }
@@ -359,6 +402,12 @@ function renderTabs() {
     const button = document.createElement('button'); button.setAttribute('role', 'tab'); button.id = 'tab-' + info.id; button.dataset.documentId = info.id;
     button.setAttribute('aria-label', name); button.setAttribute('aria-selected', String(current?.id === info.id)); button.setAttribute('aria-controls', isMindmap(value) ? 'mindmap-pane' : 'document-pane'); button.tabIndex = current?.id === info.id ? 0 : -1; button.disabled = working || closing;
     button.title = value.path || name;
+    if (oversizedDrafts.has(info.id)) {
+      const warning = t('草稿超过 8 MB，最新修改尚未备份。');
+      button.title += '\n' + warning;
+      button.setAttribute('aria-description', warning);
+      button.classList.add('backup-paused');
+    }
     const label = document.createElement('span'); label.className = 'tab-name'; label.textContent = (isMindmap(value) ? '◇ ' : '') + name; button.append(label);
     if (state ? state.dirty || (!value.path && value.namedDraft) : info.dirty) { const dot = document.createElement('span'); dot.className = 'tab-dirty'; dot.textContent = '•'; dot.setAttribute('aria-label', t('未保存')); button.append(dot); }
     button.addEventListener('click', () => action(async () => unpack(await api.activateTab(info.id))));
@@ -413,6 +462,8 @@ function updateState() {
   stashActive(); renderTabs(); updateOutline(); updateSelection();
 }
 function loadDocument(docData) {
+  documentFind.close({ focus: false, clear: current?.id !== docData.id });
+  if (current?.id !== docData.id) lastFindPane = 'render';
   sessions.get(current?.id)?.map?.setLocked?.(true);
   stashActive(); editor?.view.dom.blur(); sessions.get(current?.id)?.source?.input.blur(); loaded = false;
   const previous = sessions.get(current?.id);
@@ -445,7 +496,16 @@ function loadDocument(docData) {
   state.source.input.scrollTop = sourceScroll; state.source.refresh();
   state.source.input.scrollLeft = sourceLeft;
   requestAnimationFrame(() => { scrollSyncing = false; });
-  if (state.view !== 'source' && state.previewPending) refreshPreview(state).catch(error => toast(error.message, true));
+  const preview = state.view !== 'source' && state.previewPending ? refreshPreview(state) : Promise.resolve();
+  preview.then(() => {
+    if (!docData.headingPath || current?.id !== docData.id) return;
+    const markdown = state.view === 'render' ? toSourceText(sessionContent(state, false)) : state.source.getText();
+    scrollSyncing = true;
+    try {
+      const found = revealLinkedHeading({ path: docData.headingPath, markdown, view: state.view, editorRoot: state.editor.view.dom, source: state.source.input });
+      if (!found) toast(t('已打开文档，但找不到关联标题“{title}”。标题可能已改名、移动或删除。', { title: docData.headingPath.at(-1).text }), true);
+    } finally { requestAnimationFrame(() => { scrollSyncing = false; }); }
+  }).catch(error => toast(error.message, true));
   renderTabs(); revealActiveTab();
 }
 function updateOutline() {
@@ -464,10 +524,15 @@ function updateSelection() {
   if (!editor || !loaded) { toolbar.hidden = true; $('table-tools').hidden = true; return; }
   updateQuickFormatting();
   $('table-tools').hidden = !(editing && visualView() && editor.isActive('table'));
-  if (!editing || !visualView() || working || closing || metadataFocused() || editor.state.selection.empty || !(editor.state.selection instanceof TextSelection)) { toolbar.hidden = true; return; }
+  const selected = editor.state.selection;
+  const imageSelected = ['image', 'inlineImage', 'imageLink'].includes(selected.node?.type.name);
+  if (!editing || !visualView() || working || closing || metadataFocused() || selected.empty || !(imageSelected || selected instanceof TextSelection)) { toolbar.hidden = true; return; }
   const selection = window.getSelection();
-  if (!selection?.rangeCount || !$('editor').contains(selection.anchorNode)) { toolbar.hidden = true; return; }
-  const rect = selection.getRangeAt(0).getBoundingClientRect();
+  const anchor = imageSelected ? editor.view.nodeDOM(selected.from)
+    : selection?.rangeCount && $('editor').contains(selection.anchorNode) ? selection.getRangeAt(0) : null;
+  if (!anchor) { toolbar.hidden = true; return; }
+  const rect = anchor.getBoundingClientRect();
+  for (const control of toolbar.children) control.hidden = imageSelected && control.dataset.command !== 'link';
   toolbar.hidden = false;
   const width = toolbar.offsetWidth;
   toolbar.style.left = Math.max(10, Math.min(window.innerWidth - width - 10, rect.left + rect.width / 2 - width / 2)) + 'px';
@@ -708,9 +773,9 @@ function toggleMenu(id, anchor) {
   anchor.setAttribute('aria-expanded', 'true');
 }
 function showLink() {
-  linkSelection = { from: editor.state.selection.from, to: editor.state.selection.to };
-  $('link-text').value = editor.state.doc.textBetween(linkSelection.from, linkSelection.to, ' ');
-  $('link-url').value = editor.getAttributes('link').href || '';
+  linkSelection = editorLinkTarget(editor);
+  $('link-text').value = linkSelection.text;
+  $('link-url').value = linkSelection.href;
   $('link-error').hidden = true; $('link-dialog').showModal(); $('link-url').focus();
 }
 async function command(name) {
@@ -730,6 +795,14 @@ $('open').addEventListener('click', () => action(async () => unpack(await api.op
 $('new').addEventListener('click', () => action(async () => unpack(await api.newDocument())));
 $('save').addEventListener('click', () => action(() => save()));
 $('save-as').addEventListener('click', () => { hideMenus(); action(() => save(true)); });
+$('share-project').addEventListener('click', () => {
+  hideMenus();
+  if (hasComposition()) { toast(t('请先完成当前文字输入，再导出分享包。')); return; }
+  action(async () => {
+    const result = unpack(await api.exportShare(current.id, content()));
+    if (!result.canceled) toast(t('分享包已导出。解压后打开 {name}。', { name: result.rootName }));
+  });
+});
 $('mode').addEventListener('click', toggleMode);
 $('new-mindmap').addEventListener('click', () => action(async () => unpack(await api.newMindmap())));
 $('outline-to-mindmap').addEventListener('click', () => action(async () => {
@@ -802,9 +875,7 @@ $('link-confirm').addEventListener('click', () => {
   if (!editing || !visualView() || working || closing) return;
   const url = $('link-url').value.trim(); if (!safeLink(url)) { $('link-error').hidden = false; return; }
   $('link-dialog').close();
-  editor.commands.setTextSelection(linkSelection);
-  if (linkSelection.from === linkSelection.to) editor.chain().focus().insertContent({ type: 'text', text: $('link-text').value.trim() || url, marks: [{ type: 'link', attrs: { href: url } }] }).run();
-  else editor.chain().focus().setLink({ href: url }).run();
+  if (applyEditorLink(editor, linkSelection, url, $('link-text').value)) editor.commands.focus();
 });
 $('table-confirm').addEventListener('click', () => {
   if (!editing || !visualView() || working || closing) return;
@@ -824,6 +895,7 @@ document.addEventListener('keydown', event => {
 }, true);
 document.addEventListener('keydown', event => {
   if (viewMode !== 'compare' || !editing || event.isComposing || document.querySelector('dialog[open]')) return;
+  if ($('find-bar').contains(event.target)) return;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) sessions.get(current.id).source.closeGroup();
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
   const key = event.key.toLowerCase();
@@ -908,9 +980,11 @@ api.onClosingCanceled(() => { closing = false; setInputPermissions(); updateSele
 api.onDocument(loadDocument);
 api.onSaved(applySaved);
 api.onClosed(({ id, document }) => {
+  if (current?.id === id) documentFind.close({ focus: false, clear: true });
+  oversizedDrafts.delete(id);
   const state = sessions.get(id); clearTimeout(state?.previewTimer); state?.editor?.destroy(); state?.source?.destroy(); state?.map?.destroy(); sessions.delete(id);
   if (current?.id === id) { current = null; editor = undefined; loaded = false; loadDocument(document); }
-  else { tabOrder = document.tabs; renderTabs(); }
+  else { tabOrder = document.tabs; renderTabs(); updateRecoveryStatus(); }
 });
 onLocaleChange(refreshLanguage);
 function markDocumentReady() {

@@ -7,6 +7,21 @@ for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'Node', 'D
 }
 const editorTools = await import('../src/editor.js');
 const { createEditor } = editorTools;
+test('an image heading and plain heading with the same label retain distinct outline destinations', async () => {
+  const { markdownToMindmap, findRenderedHeading } = await import('../src/mindmap-outline.mjs');
+  const text = '# Parent\n\n## ![Alpha](a.png)\n\n## Alpha';
+  const editor = createEditor(document.createElement('div'), text, { imageURL: src => src });
+  try {
+    const root = editor.view.dom, [first, second] = root.querySelectorAll('h2');
+    assert.ok(first.querySelector('.image-error'));
+    const map = markdownToMindmap(text, { file: 'C:/notes/book.md' });
+    for (const extraHeading of [false, true]) {
+      if (extraHeading) root.append(document.createElement('h3'));
+      assert.equal(findRenderedHeading(root, map.nodes[1].headingPath, text) === first, true, 'first occurrence is the image heading');
+      assert.equal(findRenderedHeading(root, map.nodes[2].headingPath, text) === second, true, 'second occurrence is the plain heading');
+    }
+  } finally { editor.destroy(); }
+});
 const { imageMarkdown } = await import('../src/image-transfer.mjs');
 const fixture = '# 我的文档\n\n这是 **粗体** 和 *斜体*，~~删除线~~，以及 [网页](https://example.com)。\n\n- 项目\n  - 子项目\n\n1. 第一项\n2. 第二项\n\n- [x] 完成\n- [ ] 未完成\n\n> 引用文字\n\n| 名称 | 数量 |\n| --- | --- |\n| 中文 | 2 |\n\n![图片](assets/photo.png)\n\n```js\nconst answer = 42;\n```\n\n第一行  \n第二行\n';
 
@@ -112,6 +127,108 @@ test('visual editor renders formats and roundtrip retains meaningful Markdown co
     const restored = createEditor(document.createElement('div'), output);
     try { assert.equal(restored.getText(), editor.getText()); } finally { restored.destroy(); }
   } finally { editor.destroy(); element.remove(); }
+});
+test('editing another paragraph preserves clickable Markdown images when reopened', () => {
+  const source = 'Intro\n\n[![Build](badge.png "Badge")](https://example.test/status "Status")\n\n' +
+    'Visit [the ![icon](small.png) guide](docs/guide.md) today.';
+  const host = document.createElement('div');
+  const editor = createEditor(host, source, { imageURL: src => '/assets/' + src });
+  try {
+    editor.state.doc.check();
+    assert.equal(host.querySelector('a[href="https://example.test/status"] img').getAttribute('alt'), 'Build');
+    editor.commands.insertContentAt(2, '!');
+    const saved = editor.getMarkdown();
+    assert.ok(saved.includes(source.slice(source.indexOf('['))));
+    const reopened = createEditor(document.createElement('div'), saved);
+    try {
+      reopened.state.doc.check();
+      assert.equal(reopened.getMarkdown(), saved);
+      assert.equal(reopened.view.dom.querySelector('a[title="Status"] img').title, 'Badge');
+    } finally { reopened.destroy(); }
+  } finally { editor.destroy(); }
+});
+
+test('editing another paragraph preserves nested code fences and their entire literal content', () => {
+  const body = ['```js', 'const answer = 42;', '```', '  `````', '# Still literal'].join('\n');
+  const source = ['Intro', '', '~~~~markdown', body, '~~~~', '', 'After'].join('\n');
+  const editor = createEditor(document.createElement('div'), source);
+  try {
+    editor.commands.insertContentAt(2, '!');
+    const saved = editor.getMarkdown();
+    const reopened = createEditor(document.createElement('div'), saved);
+    try {
+      const blocks = reopened.getJSON().content;
+      assert.deepEqual(blocks.map(node => node.type), ['paragraph', 'codeBlock', 'paragraph']);
+      assert.equal(blocks[1].attrs.language, 'markdown');
+      assert.equal(blocks[1].content[0].text, body);
+      assert.equal(blocks[2].content[0].text, 'After');
+    } finally { reopened.destroy(); }
+  } finally { editor.destroy(); }
+});
+
+test('the link tool creates or retargets inline and standalone image links without nesting', () => {
+  for (const source of ['Left ![badge](badge.png) right', '![badge](badge.png)', 'Left [a ![badge](badge.png)](https://old.test "Original") right']) {
+    const editor = createEditor(document.createElement('div'), source);
+    try {
+      let imagePos;
+      editor.state.doc.descendants((node, pos) => { if (['image', 'inlineImage'].includes(node.type.name)) imagePos = pos; });
+      editor.commands.setNodeSelection(imagePos);
+      const target = editorTools.editorLinkTarget(editor);
+      assert.equal(target.href, source.includes('old.test') ? 'https://old.test' : '');
+      assert.equal(editorTools.applyEditorLink(editor, target, 'https://new.test', ''), true);
+      editor.state.doc.check();
+      const saved = editor.getMarkdown();
+      assert.doesNotMatch(saved, /old\.test/);
+      const reopened = createEditor(document.createElement('div'), saved);
+      try {
+        const anchors = reopened.view.dom.querySelectorAll('a');
+        assert.equal(anchors.length, 1);
+        assert.equal(anchors[0].getAttribute('href'), 'https://new.test');
+        assert.equal(anchors[0].querySelector('img').getAttribute('src'), 'badge.png');
+        if (source.includes('old.test')) assert.equal(anchors[0].getAttribute('title'), 'Original');
+      } finally { reopened.destroy(); }
+    } finally { editor.destroy(); }
+  }
+});
+
+test('the link tool keeps selected text and updates the existing text link at a caret', () => {
+  const editor = createEditor(document.createElement('div'), 'words');
+  try {
+    editor.commands.setTextSelection({ from: 1, to: 6 });
+    editorTools.applyEditorLink(editor, editorTools.editorLinkTarget(editor), 'https://old.test', '');
+    editor.commands.setTextSelection(3);
+    const target = editorTools.editorLinkTarget(editor);
+    assert.equal(target.href, 'https://old.test');
+    editorTools.applyEditorLink(editor, target, 'https://new.test', '');
+    assert.equal(editor.getMarkdown(), '[words](https://new.test)');
+    editor.commands.setContent('blank', { contentType: 'markdown' });
+    editor.commands.setTextSelection(1);
+    editorTools.applyEditorLink(editor, editorTools.editorLinkTarget(editor), 'https://insert.test', 'new');
+    assert.equal(editor.getMarkdown(), '[new](https://insert.test)blank');
+  } finally { editor.destroy(); }
+});
+
+test('linking mixed text and images across paragraphs replaces previous targets and undoes in one step', () => {
+  const source = 'Before\n\nStart [badge ![One](one.png)](https://old.test) and ![Two](two.png).\n\nAfter';
+  const editor = createEditor(document.createElement('div'), source);
+  try {
+    editor.commands.selectAll();
+    const original = editor.getMarkdown();
+    assert.equal(editor.commands.setLink({ href: 'https://new.test' }), true);
+    editor.state.doc.check();
+    const saved = editor.getMarkdown();
+    assert.doesNotMatch(saved, /old\.test/);
+    const reopened = createEditor(document.createElement('div'), saved);
+    try {
+      const anchors = [...reopened.view.dom.querySelectorAll('a')];
+      assert.equal(anchors.length, 3);
+      assert.ok(anchors.every(anchor => anchor.getAttribute('href') === 'https://new.test'));
+      assert.equal(anchors[1].querySelectorAll('img').length, 2);
+      assert.equal(anchors[1].querySelectorAll('a').length, 0);
+    } finally { reopened.destroy(); }
+    assert.equal(editor.commands.undo(), true);
+    assert.equal(editor.getMarkdown(), original);
+  } finally { editor.destroy(); }
 });
 test('format buttons change rich text and serialize normal Markdown', () => {
   const editor = createEditor(document.createElement('div'), '直接编辑');

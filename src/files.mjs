@@ -3,7 +3,7 @@ import { readFile, open, rename, unlink, stat } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, basename, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
-const MAX_BYTES = 8 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
 const fingerprint = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export function normalizeDocumentName(value, extension = 'md') {
@@ -58,7 +58,7 @@ export async function renameDocument(source, name, expectedFingerprint, extensio
 export async function readDocument(path) {
   const info = await stat(path);
   if (!info.isFile()) throw new Error(t('请选择 Markdown 文件。'));
-  if (info.size > MAX_BYTES) throw new Error(t('首版支持最大 8 MB 的文档。'));
+  if (info.size > MAX_DOCUMENT_BYTES) throw Object.assign(new Error(t('首版支持最大 8 MB 的文档。')), { code: 'DOCUMENT_TOO_LARGE' });
   const bytes = await readFile(path);
   let content;
   try { content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
@@ -67,7 +67,7 @@ export async function readDocument(path) {
 }
 
 export async function writeDocument(path, content, expectedFingerprint) {
-  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > MAX_BYTES) throw new Error(t('文档超过 8 MB 或内容无效。'));
+  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > MAX_DOCUMENT_BYTES) throw new Error(t('文档超过 8 MB 或内容无效。'));
   const verify = async () => {
     let current = null;
     try { current = fingerprint(await readFile(path)); } catch (error) { if (error.code !== 'ENOENT') throw error; }
