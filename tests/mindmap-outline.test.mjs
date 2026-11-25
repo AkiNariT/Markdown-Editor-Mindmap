@@ -81,3 +81,54 @@ test('source heading ranges match the textarea after metadata, definitions, fenc
   const source = text.replace(/^\ufeff/, '').replace(/\r\n/g, '\n');
   assert.equal(heading.start, source.lastIndexOf('Target')); assert.equal(source.slice(heading.start, heading.end), 'Target\n------');
 });
+
+test('a heading link follows the original section when an earlier same-name sibling is inserted or reordered', () => {
+  const source = '# Book\n## Notes\nFirst\n## Notes\nOriginal destination\n';
+  const map = parseMindmap(serializeMindmap(outline.markdownToMindmap(source, { file: 'notes.md' })));
+  const link = map.nodes.at(-1);
+  assert.ok(link.headingAnchor);
+  for (const changed of [
+    source.replace('## Notes', '## Notes\nInserted\n## Notes'),
+    '# Book\n## Notes\nOriginal destination\n## Notes\nFirst\n',
+  ]) {
+    const { target } = outline.resolveHeadingLink(changed, link);
+    assert.equal(changed.slice(target.end).trimStart().startsWith('Original destination'), true);
+  }
+  const invalid = structuredClone(map);
+  invalid.nodes.at(-1).headingAnchor.section = 'invalid';
+  assert.throws(() => validateMindmap(invalid));
+});
+
+test('indistinguishable duplicates require a choice, and rebinding preserves that choice after reopen', () => {
+  const source = '# Book\n## Notes\nIdentical\n## Notes\nIdentical\n';
+  const link = outline.markdownToMindmap(source, { file: 'notes.md' }).nodes.at(-1);
+  const changed = source + '## New chapter\n';
+  const resolved = outline.resolveHeadingLink(changed, link);
+  assert.equal(resolved.target, undefined);
+  assert.deepEqual(resolved.candidates.map(h => h.line), [2, 4]);
+  assert.equal(resolved.candidates[1].preview, 'Identical');
+  const selected = resolved.candidates[1];
+  const rebound = { headingPath: selected.path, headingAnchor: selected.anchor };
+  assert.equal(outline.resolveHeadingLink(changed, rebound).target.start, changed.lastIndexOf('## Notes'));
+  const removed = '# Book\n## Notes\nIdentical\n';
+  assert.equal(outline.resolveHeadingLink(removed, link).target, undefined);
+});
+
+test('an empty linked section remains identifiable when the inserted same-name section has different content', () => {
+  const source = '# Book\n## Tasks\n## Appendix\n';
+  const link = outline.markdownToMindmap(source, { file: 'notes.md' }).nodes[1];
+  const changed = '# Book\n## Tasks\nInserted notes\n## Tasks\n## Appendix\n';
+  assert.equal(outline.resolveHeadingLink(changed, link).target?.start, changed.lastIndexOf('## Tasks'));
+});
+
+test('legacy links support unique headings and present ambiguous or deleted occurrences for review', () => {
+  const source = '# Book\n## Notes\nFirst\n## Notes\nSecond\n## Unique\n';
+  const map = outline.markdownToMindmap(source, { file: 'notes.md' });
+  const legacy = { headingPath: map.nodes[2].headingPath };
+  assert.equal(outline.resolveHeadingLink(source, legacy).target, undefined);
+  assert.equal(outline.resolveHeadingLink(source, legacy).candidates.length, 2);
+  assert.equal(outline.resolveHeadingLink(source, { headingPath: map.nodes[3].headingPath }).target.text, 'Unique');
+  const removed = source.replace('## Notes\nSecond\n', '');
+  assert.equal(outline.resolveHeadingLink(removed, map.nodes[2]).target, undefined);
+  assert.equal(outline.resolveHeadingLink(removed, legacy).target, undefined);
+});

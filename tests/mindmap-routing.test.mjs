@@ -11,6 +11,38 @@ const router = (items, options) => {
   return routing.createMindmapRouter(new Map(Object.entries(items)), options);
 };
 
+test('a preview reuses direct routes only while endpoints and blocking cards allow it', () => {
+  const cards = { a: { x: 0, y: 0 }, b: { x: 600, y: 0 }, c: { x: 300, y: 300 } };
+  const original = router(cards).route('a', 'b');
+  const movedIds = new Set(['c']);
+  const preview = previous => router(cards, { movedIds }).route('a', 'b', {}, previous);
+  cards.c.y = 400;
+  assert.equal(preview(original), original);
+  cards.c.y = 0;
+  const detour = preview(original); assertClear(detour, cards); assert.notEqual(detour.d, original.d);
+  cards.c.y = 400;
+  assert.equal(preview(detour).d, original.d);
+  movedIds.add('b'); cards.b.x += 90;
+  assert.deepEqual(preview(original), router(cards).route('a', 'b'));
+});
+test('an unchanged corridor detour is reused until a moving obstacle enters or leaves its routing area', () => {
+  const cards = new Map(Object.entries({ a: { x: 100, y: 500 }, b: { x: 392, y: 0 },
+    blocker: { x: 392, y: 124 }, far: { x: 800, y: 1800 } }));
+  const fresh = () => routing.createMindmapRouter(cards, { cacheCorridors: true }).route('a', 'b');
+  let current = fresh(); assert.equal(current.rerouted, true);
+  function move(id, x, y) {
+    const previousPositions = new Map(cards);
+    cards.set(id, { x, y });
+    const next = routing.createMindmapRouter(cards, { cacheCorridors: true, previousPositions, movedIds: new Set([id]) }).route('a', 'b', {}, current);
+    assert.deepEqual(next, fresh()); return next;
+  }
+  assert.equal(move('far', 820, 1800), current);
+  current = move('far', 330, 300); assertClear(current, Object.fromEntries(cards));
+  current = move('far', 800, 1800);
+  current = move('blocker', 800, 1500);
+  assert.equal(current.rerouted, false);
+});
+
 // Inspect densely sampled output against actual cards independently of the router's
 // collision routine. A point on a card boundary is a valid attachment, not a hit.
 function assertClear(route, cards, { width = 216, height = 96 } = {}) {

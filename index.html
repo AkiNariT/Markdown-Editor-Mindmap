@@ -121,6 +121,15 @@
     <p id="update-error" class="form-error" role="alert" hidden=""></p>
     <div class="dialog-actions update-actions"><button id="update-download" type="button" hidden="" data-i18n="打开官方下载页面">打开官方下载页面</button><button id="update-close" type="button" data-i18n="关闭">关闭</button><button id="update-check" type="button" class="primary" autofocus data-i18n="检查更新">检查更新</button></div>
   </dialog>
+  <dialog id="heading-choice" aria-labelledby="heading-choice-title"><form method="dialog">
+    <h2 class="dialog-heading" id="heading-choice-title" data-i18n="选择关联标题">选择关联标题</h2>
+    <p id="heading-choice-note" class="dialog-note"></p>
+    <select id="heading-options" size="6" aria-labelledby="heading-choice-title"></select>
+    <p id="heading-choice-preview" class="dialog-note"></p>
+    <div class="dialog-actions"><button value="cancel" data-i18n="取消">取消</button>
+      <button id="heading-open" value="open" data-i18n="仅本次定位">仅本次定位</button>
+      <button id="heading-rebind" class="primary" value="rebind" data-i18n="重新绑定并定位">重新绑定并定位</button></div>
+  </form></dialog>
   <script src="dist/app.js"></script>
 
 

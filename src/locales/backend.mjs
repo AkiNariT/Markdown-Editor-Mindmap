@@ -23,6 +23,7 @@ export default {
   '-编辑副本': '-edited-copy',
   '-副本': '-copy',
   '文档标签已关闭。': 'The document tab has been closed.',
+  '文档已切换，请切回原标签后再保存。': 'The active document has changed. Switch back to the original tab before saving.',
   '最多打开 80 个标签，请关闭部分标签后重试。': 'You can open up to 80 tabs. Close some tabs and try again.',
   '“{name}”已在外部变化，恢复的草稿保留原校验信息，请另存为。': '“{name}” has changed outside MD. The recovered draft retains its original file checks. Use Save As to keep your changes.',
   '“{name}”暂时无法从原位置读取，已保留本地缓存；修改后请另存为。': '“{name}” cannot currently be read from its original location. A cached copy is available. Use Save As after editing.',

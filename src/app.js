@@ -7,7 +7,8 @@ import { fillIcons, icon } from './icons.js';
 import { TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { createMindmapView } from './mindmap-view.js';
-import { revealLinkedHeading } from './mindmap-heading-navigation.mjs';
+import { chooseLinkedHeading, clearLinkedHeading, revealLinkedHeading } from './mindmap-heading-navigation.mjs';
+import { resolveHeadingLink } from './mindmap-outline.mjs';
 import { parseMindmap, serializeMindmap } from './mindmap.mjs';
 import { captureReadingPosition, restoreReadingPosition } from './zoom.mjs';
 import { checkpointDraft, createCheckpointController } from './checkpoint.mjs';
@@ -35,14 +36,16 @@ const documentFind = createDocumentFind({
   document,
   onOpen: hideMenus,
   canOpen: () => loaded && !isMindmap() && !working && !closing && !hasComposition() && !document.querySelector('dialog[open]'),
-  getSurface: () => ({
-    canvas: document.querySelector('.canvas'), visual: editor.view.dom, source: sessions.get(current.id).source.input,
-    scope: viewMode === 'compare' ? lastFindPane : viewMode,
-  }),
+  getSurface: () => {
+    flushCompareInput();
+    return { canvas: document.querySelector('.canvas'), visual: editor.view.dom, source: sessions.get(current.id).source.input,
+      scope: viewMode === 'compare' ? lastFindPane : viewMode };
+  },
 });
 for (const event of ['pointerdown', 'focusin']) document.addEventListener(event, ({ target }) => {
   if ($('source-container').contains(target)) lastFindPane = 'source';
-  else if (target.closest('.canvas')) lastFindPane = 'render';
+  else if (target.closest('.canvas')) { lastFindPane = 'render'; flushCompareInput(); }
+  else if (target.closest('#edit-controls, #selection-toolbar, #outline-items')) flushCompareInput();
 }, true);
 $('find-open').addEventListener('click', documentFind.open);
 // Keep references to application chrome before any document content is mounted.
@@ -186,29 +189,45 @@ function setInputPermissions() {
   $('outline-toggle').disabled = isMindmap() || viewMode === 'source' || working || closing;
 }
 function sourceSafe(state) { return state?.authority === 'source' && !state.visualLossy; }
+function editorMarkdown(state) {
+  const doc = state.editor.state.doc;
+  if (state.serializedDoc !== doc) {
+    state.serializedMarkdown = state.editor.getMarkdown();
+    state.serializedDoc = doc;
+  }
+  return state.serializedMarkdown;
+}
+function unsupportedFormats(state) {
+  if (state.checkedMarkdown !== state.visualOriginal) {
+    state.unsupportedFormats = detectUnsupported(state.visualOriginal);
+    state.checkedMarkdown = state.visualOriginal;
+  }
+  return state.unsupportedFormats;
+}
 function markVisualChange(state) {
   documentFind.close({ focus: false, restore: false });
+  const markdown = editorMarkdown(state);
   if (viewMode === 'compare') {
     clearTimeout(state.previewTimer); state.previewPending = false; const revision = ++state.previewRevision;
-    const projected = state.editor.getMarkdown().trimEnd() === state.projection.markdown && metadataSignature() === state.projection.metadata;
-    const lossy = projected ? state.projection.lossy : state.visualLossy || detectUnsupported(state.visualOriginal).length > 0;
-    const text = projected ? state.projection.content : composeMarkdown(state.editor.getMarkdown(), state.visualOriginal, skillValues(), { validate: false });
+    const projected = markdown.trimEnd() === state.projection.markdown && metadataSignature() === state.projection.metadata;
+    const lossy = projected ? state.projection.lossy : state.visualLossy || unsupportedFormats(state).length > 0;
+    const text = projected ? state.projection.content : composeMarkdown(markdown, state.visualOriginal, skillValues(), { validate: false });
     state.source.setText(toSourceText(text), { record: true, context: { lossy } });
     state.visualLossy = lossy; state.authority = 'source'; state.visualOriginal = text;
     state.documentParts = readDocumentParts({ ...state.current, content: text }); documentParts = state.documentParts;
     state.metadata = skillValues(); updateDocumentChrome(); updateState();
     cachePreview(state, text, revision).catch(error => toast(error.message, true)); return;
   }
-  if (state.editor.getMarkdown().trimEnd() === state.projection.markdown && metadataSignature() === state.projection.metadata) {
+  if (markdown.trimEnd() === state.projection.markdown && metadataSignature() === state.projection.metadata) {
     state.authority = 'source'; state.visualLossy = state.projection.lossy; state.visualOriginal = state.projection.content;
     state.source.setText(toSourceText(state.projection.content), { record: state.viewsSeen.has('compare'), context: { lossy: state.visualLossy } });
-  } else { state.authority = 'visual'; state.visualLossy ||= detectUnsupported(state.visualOriginal).length > 0; }
+  } else { state.authority = 'visual'; state.visualLossy ||= unsupportedFormats(state).length > 0; }
   updateState();
 }
 function sessionContent(state, validate = true) {
   if (state.map) return state.map.getText();
   if (state.authority === 'source') return fromSourceText(state.source.getText(), state.current.content);
-  return state.dirty ? composeMarkdown(state.editor.getMarkdown(), state.visualOriginal, state.metadata, { validate }) : state.current.content;
+  return state.dirty ? composeMarkdown(editorMarkdown(state), state.visualOriginal, state.metadata, { validate }) : state.current.content;
 }
 function content() { stashActive(); return sessionContent(sessions.get(current.id)); }
 function stashActive() {
@@ -227,9 +246,9 @@ function createSession(value, mountEditor = false) {
     const state = { current: value, dirty: false, editing: Boolean(value.editable), zoom: 100, view: 'mindmap' };
     state.map = createMindmapView(value.mapData, {
       onChange: () => {
+        if (loaded && current?.id === value.id) { updateState({ mapChanged: true }); return; }
         state.dirty = state.map.getText() !== state.baselineMap;
-        api.setDirty(state.current.id, state.dirty);
-        if (loaded && current?.id === value.id) updateState(); else renderTabs();
+        api.setDirty(state.current.id, state.dirty); renderTabs();
       },
       onLink: async () => action(async () => { const result = unpack(await api.chooseMindmapFile()); return result.canceled ? null : result.path; }),
       onCreate: async nodeId => action(async () => { await checkpoint.flush(); return unpack(await api.createMindmapFile(state.current.id, state.map.getText(), nodeId)); }),
@@ -238,9 +257,9 @@ function createSession(value, mountEditor = false) {
         return unpack(await api.openMindmapFile(state.current.id, state.map.getText(), nodeId, options.created === true));
       }),
       onEdit: async () => { if (current?.id === state.current.id && !editing) await toggleMode(); },
-      onExport: async settings => action(async () => {
+      onExport: async (settings, exportContent) => action(async () => {
         await checkpoint.flush();
-        const result = unpack(await api.exportMindmap(state.current.id, state.map.getText(), settings));
+        const result = unpack(await api.exportMindmap(state.current.id, exportContent, settings));
         if (!result.canceled) toast(t('已导出 {count} 个文件。', { count: result.count }));
         return result;
       }),
@@ -260,7 +279,7 @@ function createSession(value, mountEditor = false) {
     handleDrop: (view, event) => handleImageTransfer(event, state, 'visual', view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos),
     onUpdate: ({ transaction }) => { if (loaded && visualView() && transaction.docChanged && current?.id === value.id) markVisualChange(state); },
     onSelectionUpdate: () => { if (loaded && current?.id === value.id) updateSelection(); } });
-  state.baseline = state.editor.getMarkdown().trimEnd();
+  state.baseline = editorMarkdown(state).trimEnd();
   state.baselineMetadata = JSON.stringify(state.metadata) || '';
   state.baselinePrefix = parts?.prefix || '';
   state.projection = { markdown: state.baseline, metadata: state.baselineMetadata, content: value.content, lossy: false };
@@ -285,8 +304,27 @@ function sourceInput(state, context) {
   state.documentParts = readDocumentParts({ ...state.current, content: state.visualOriginal });
   state.metadata = state.documentParts?.skill ? { ...state.documentParts.skill } : undefined;
   documentParts = state.documentParts; $('skill-name').value = state.metadata?.name || ''; $('skill-description').value = state.metadata?.description || '';
-  updateDocumentChrome(); updateState(); clearTimeout(state.previewTimer);
-  if (viewMode === 'compare') refreshPreview(state).catch(error => toast(error.message, true));
+  updateState(); clearTimeout(state.previewTimer);
+  if (composing) { state.previewStarted = undefined; return; }
+  const finishInput = () => {
+    state.previewStarted = undefined;
+    if (sessions.get(current?.id) !== state || !state.previewPending) return;
+    if (viewMode === 'compare') refreshPreview(state).catch(error => toast(error.message, true));
+    else updateDocumentChrome();
+  };
+  // Large documents share one parse across a burst. Bound the delay during continuous typing.
+  if (state.visualOriginal.length < 8192) finishInput();
+  else {
+    const now = performance.now();
+    state.previewStarted ??= now;
+    state.previewTimer = setTimeout(finishInput, Math.min(120, Math.max(0, state.previewStarted + 350 - now)));
+  }
+}
+function flushCompareInput() {
+  const state = sessions.get(current?.id);
+  if (loaded && !composing && state?.view === 'compare' && state.previewPending) {
+    refreshPreview(state).catch(error => toast(error.message, true));
+  }
 }
 function replacePreview(state, text) {
   if (current?.id === state.current.id) documentFind.close({ focus: false, restore: false });
@@ -304,13 +342,13 @@ function replacePreview(state, text) {
         return true;
       }).run();
     state.visualOriginal = text; state.previewPending = false;
-    state.projection = { markdown: state.editor.getMarkdown().trimEnd(), metadata: JSON.stringify(state.metadata) || '', content: text, lossy: state.visualLossy };
+    state.projection = { markdown: editorMarkdown(state).trimEnd(), metadata: JSON.stringify(state.metadata) || '', content: text, lossy: state.visualLossy };
     if (active) { documentParts = state.documentParts; $('skill-name').value = state.metadata?.name || ''; $('skill-description').value = state.metadata?.description || ''; updateDocumentChrome(); }
   } finally { if (active) loaded = wasLoaded; }
   if (active) { canvas.scrollTo({ top: scroll, behavior: 'instant' }); updateOutline(); updateSelection(); requestAnimationFrame(() => { scrollSyncing = false; }); }
 }
 async function refreshPreview(state) {
-  clearTimeout(state.previewTimer); if (!state.previewPending) return;
+  clearTimeout(state.previewTimer); state.previewStarted = undefined; if (!state.previewPending) return;
   const text = fromSourceText(state.source.getText(), state.current.content);
   const revision = ++state.previewRevision, immediate = state.view === 'compare';
   // Render synchronously before the user can type in the other pane.
@@ -432,7 +470,7 @@ function updateDocumentChrome() {
   $('frontmatter-info').hidden = !documentParts;
   $('skill-fields').hidden = !documentParts?.skill;
   $('metadata-note').textContent = documentParts?.skill ? t('名称与用途会一并保存，正文在下方直接编辑。') : t('文件头信息会随正文一同保留。');
-  const state = sessions.get(current.id), unsupported = detectUnsupported(state.visualOriginal);
+  const state = sessions.get(current.id), unsupported = unsupportedFormats(state);
   $('protection').hidden = !unsupported.length && !state.visualLossy;
   $('protection-text').textContent = state.visualLossy ? t('正文编辑可能改变部分特殊格式，保存时需要另存副本。') : t(viewMode === 'compare' ? '包含 {formats}。这些格式可能显示不完整；仅编辑源码会保留，修改正文后需要另存副本。' : '包含 {formats}。正文模式暂不能完整编辑；可使用源码模式编辑，正文编辑后需要另存副本。', { formats: unsupported.join(getLocale() === 'en' ? ', ' : '、') });
 }
@@ -440,28 +478,37 @@ function updateStatusLabels() {
   const state = sessions.get(current?.id); if (!state) return;
   const pending = state.dirty || (!current.path && current.namedDraft);
   $('save-state').textContent = pending ? t('尚未保存') : (current.path ? t('已保存') : state.map ? t('本地导图') : t('本地文档'));
-  $('word-count').textContent = state.map ? t('{count} 个主题', { count: state.map.getData().nodes.length.toLocaleString(getLocale()) }) : t('{count} 字', { count: [...(state.authority === 'source' ? state.source.getText() : state.editor.getText()).replace(/\s/g, '')].length.toLocaleString(getLocale()) });
+  $('word-count').textContent = state.map ? t('{count} 个主题', { count: state.map.getNodeCount().toLocaleString(getLocale()) }) : t('{count} 字', { count: [...(state.authority === 'source' ? state.source.getText() : state.editor.getText()).replace(/\s/g, '')].length.toLocaleString(getLocale()) });
 }
-function updateState() {
-  checkpoint.schedule(); updateRecoveryStatus();
+function updateState({ mapChanged = false } = {}) {
+  checkpoint.schedule();
   if (isMindmap()) {
     const state = sessions.get(current.id); if (!state?.map) return;
+    const wasDirty = state.dirty;
     dirty = state.map.getText() !== state.baselineMap; state.dirty = dirty;
     const pending = dirty || (!current.path && current.namedDraft);
-    api.setDirty(current.id, dirty); $('dirty-dot').hidden = !pending;
-    updateStatusLabels();
-    stashActive(); renderTabs(); return;
+    $('dirty-dot').hidden = !pending;
+    updateStatusLabels(); updateRecoveryStatus();
+    stashActive();
+    if (!mapChanged || dirty !== wasDirty) { api.setDirty(current.id, dirty); renderTabs(); }
+    return;
   }
+  updateRecoveryStatus();
   if (!editor || !current) return;
   const state = sessions.get(current.id);
-  dirty = state.authority === 'source' ? fromSourceText(state.source.getText(), current.content) !== current.content : editor.getMarkdown().trimEnd() !== baseline || metadataSignature() !== baselineMetadata || (documentParts?.prefix || '') !== state.baselinePrefix;
+  const wasDirty = state.dirty;
+  dirty = state.authority === 'source' ? state.source.getText() !== toSourceText(current.content) : editorMarkdown(state).trimEnd() !== baseline || metadataSignature() !== baselineMetadata || (documentParts?.prefix || '') !== state.baselinePrefix;
   state.dirty = dirty;
   const pending = dirty || (!current.path && current.namedDraft);
   api.setDirty(current.id, dirty, state.visualLossy); $('dirty-dot').hidden = !pending;
   updateStatusLabels();
-  stashActive(); renderTabs(); updateOutline(); updateSelection();
+  state.metadata = skillValues();
+  if (dirty !== wasDirty) renderTabs();
+  if (document.activeElement !== state.source.input) { updateOutline(); updateSelection(); }
 }
 function loadDocument(docData) {
+  if ($('heading-choice').open) $('heading-choice').close('cancel');
+  clearLinkedHeading();
   documentFind.close({ focus: false, clear: current?.id !== docData.id });
   if (current?.id !== docData.id) lastFindPane = 'render';
   sessions.get(current?.id)?.map?.setLocked?.(true);
@@ -497,20 +544,39 @@ function loadDocument(docData) {
   state.source.input.scrollLeft = sourceLeft;
   requestAnimationFrame(() => { scrollSyncing = false; });
   const preview = state.view !== 'source' && state.previewPending ? refreshPreview(state) : Promise.resolve();
-  preview.then(() => {
-    if (!docData.headingPath || current?.id !== docData.id) return;
+  preview.then(async () => {
+    const link = docData.headingLink;
+    if (!link || current?.id !== docData.id) return;
     const markdown = state.view === 'render' ? toSourceText(sessionContent(state, false)) : state.source.getText();
+    const resolved = resolveHeadingLink(markdown, link), title = link.headingPath.at(-1).text;
+    let target = resolved.target;
+    if (!target && resolved.headings.length) {
+      const choice = await chooseLinkedHeading(title, resolved);
+      if (!choice || current?.id !== docData.id) return;
+      target = choice.target;
+      if (choice.rebind) {
+        if (!sessions.get(link.mapId)?.map?.rebindHeading(link, target)) { toast(t('来源导图已变化，请从节点重新打开。'), true); return; }
+        checkpoint.schedule(); toast(t('标题关联已更新，请保存来源导图。'), true);
+      }
+    }
     scrollSyncing = true;
     try {
-      const found = revealLinkedHeading({ path: docData.headingPath, markdown, view: state.view, editorRoot: state.editor.view.dom, source: state.source.input });
-      if (!found) toast(t('已打开文档，但找不到关联标题“{title}”。标题可能已改名、移动或删除。', { title: docData.headingPath.at(-1).text }), true);
+      const found = target && revealLinkedHeading({ headings: resolved.headings, target, markdown, view: state.view, editorRoot: state.editor.view.dom, source: state.source.input });
+      if (!found) toast(t('已打开文档，但找不到关联标题“{title}”。标题可能已改名、移动或删除。', { title }), true);
     } finally { requestAnimationFrame(() => { scrollSyncing = false; }); }
   }).catch(error => toast(error.message, true));
   renderTabs(); revealActiveTab();
 }
+let outlineEntries = [], outlineLocale;
 function updateOutline() {
-  const nav = $('outline-items'); nav.replaceChildren();
-  const headings = $('editor').querySelectorAll('h1,h2,h3,h4,h5,h6');
+  if ($('outline').hidden) return;
+  const nav = $('outline-items');
+  const headings = [...$('editor').querySelectorAll('h1,h2,h3,h4,h5,h6')];
+  if (outlineLocale === getLocale() && headings.length === outlineEntries.length &&
+    headings.every((node, i) => outlineEntries[i].node === node && outlineEntries[i].text === node.textContent)) return;
+  outlineLocale = getLocale();
+  outlineEntries = headings.map(node => ({ node, text: node.textContent }));
+  nav.replaceChildren();
   if (!headings.length) { const p = document.createElement('p'); p.className = 'empty-outline'; p.textContent = t('标题会显示在这里'); nav.append(p); return; }
   headings.forEach(heading => {
     const button = document.createElement('button'); button.textContent = heading.textContent || t('未命名标题');
@@ -631,10 +697,29 @@ async function insertImages(state, surface, files, dropPosition) {
   }
 }
 async function save(as = false) {
-  const result = unpack(await api.save(content(), as, sourceSafe(sessions.get(current.id))));
+  const result = unpack(await api.save(current.id, content(), as, sourceSafe(sessions.get(current.id))));
   if (result.canceled) return;
   applySaved(result);
   toast(result.mindmapLinkSkipped ? t('文档已保存；原导图或节点已变化，请按需手动关联。') : result.unchanged ? t('没有需要保存的修改') : t('已保存'));
+}
+function writingSurface(state, target) {
+  if (!state?.source || !target) return;
+  if (target === state.source.input) return 'source';
+  if (state.host.contains(target)) return 'render';
+  if ($('skill-fields').contains(target)) return target.id;
+}
+function focusDocument(state, surface = state?.lastWritingSurface) {
+  if (!state?.source || sessions.get(current?.id) !== state || closing || working || document.querySelector('dialog[open]') || documentFind.active) return;
+  if (viewMode === 'source' || (viewMode === 'compare' && surface === 'source')) state.source.input.focus({ preventScroll: true });
+  else if (editing && documentParts?.skill && ['skill-name', 'skill-description'].includes(surface)) $(surface).focus({ preventScroll: true });
+  else if (editing) state.editor.view.focus();
+  else document.querySelector('.canvas').focus({ preventScroll: true });
+}
+async function saveFromUI(as = false, fromButton = false) {
+  if (!loaded || working || closing || hasComposition() || document.querySelector('dialog[open]')) return;
+  const state = sessions.get(current.id), surface = writingSurface(state, document.activeElement);
+  await action(() => save(as));
+  if (surface || (fromButton && state.editing)) focusDocument(state, surface || state.lastWritingSurface);
 }
 function updateNameLabels() {
   $('name-heading').textContent = current.path ? t('重命名文件') : t('命名文件');
@@ -693,7 +778,7 @@ function applySaved(result) {
     const { id, nodeId, path } = result.linkedMindmap;
     sessions.get(id)?.map?.attachFile(nodeId, path);
   }
-  let state = sessions.get(result.id); if (!state) return;
+  const state = sessions.get(result.id); if (!state) return;
   if (result.tabs) tabOrder = result.tabs;
   const active = current?.id === result.id;
   if (state.map) {
@@ -701,33 +786,36 @@ function applySaved(result) {
     if (active) { current = result; dirty = state.dirty; updateDocumentChrome(); updateState(); }
     renderTabs(); return;
   }
-  const position = state.editor.state.selection.from;
-  const samePath = state.current.path === result.path;
-  clearTimeout(state.previewTimer);
+  const imageKeyChanged = state.current.imageKey !== result.imageKey;
+  const replacements = new Map((result.imageReplacements || []).map(({ from, to }) => [from, to]));
+  clearTimeout(state.previewTimer); state.previewStarted = undefined;
   if (state.viewsSeen.has('compare') && state.authority === 'visual' && toSourceText(sessionContent(state, false)) === toSourceText(result.content)) {
     state.source.closeGroup();
     state.source.setText(toSourceText(result.content), { record: true, context: { lossy: false } });
   }
-  if (samePath) {
-    state.current = result;
-    if (state.authority === 'source' || result.imageReplacements?.length) replacePreview(state, result.content);
-    state.source.setText(toSourceText(result.content), { context: { lossy: false } });
-    Object.assign(state, { documentParts: readDocumentParts(result), visualOriginal: result.content, baseline: state.editor.getMarkdown().trimEnd(), baselineMetadata: JSON.stringify(state.metadata) || '', baselinePrefix: readDocumentParts(result)?.prefix || '', dirty: false, visualLossy: false });
-    state.projection = { markdown: state.baseline, metadata: state.baselineMetadata, content: result.content, lossy: false };
-    if (active) { ({ current, documentParts, baseline, baselineMetadata, dirty } = state); updateDocumentChrome(); updateState(); }
-  } else {
-    const replacement = createSession(result, active);
-    if (state.source.getText() === toSourceText(result.content)) {
-      replacement.source.destroy(); replacement.source = state.source;
-      replacement.source.setText(toSourceText(result.content), { context: { lossy: false } });
-    } else state.source.destroy();
-    Object.assign(replacement, { editing: state.editing, scroll: state.scroll, outline: state.outline, view: state.view, viewScroll: { ...state.viewScroll }, sourceScroll: state.sourceScroll, sourceLeft: state.sourceLeft, zoom: state.zoom, viewZoom: { ...state.viewZoom }, viewAnchors: { ...state.viewAnchors }, syncScroll: state.syncScroll, authority: state.authority, viewsSeen: new Set(state.viewsSeen) });
-    replacement.source.input.setSelectionRange(Math.min(state.source.input.selectionStart, replacement.source.getText().length), Math.min(state.source.input.selectionEnd, replacement.source.getText().length));
-    if (active) loaded = false;
-    state.editor.destroy(); sessions.set(result.id, replacement); state = replacement;
-    state.editor.commands.setTextSelection(Math.min(position, state.editor.state.doc.content.size));
-    if (active) { current = null; editor = undefined; loaded = false; loadDocument(result); }
+  state.current = result;
+  if (state.previewPending) replacePreview(state, result.content);
+  const saved = closeHistory(state.editor.state.tr);
+  if (replacements.size) {
+    state.editor.state.doc.descendants((node, pos) => {
+      if ((node.type.name === 'image' || node.type.name === 'inlineImage') && replacements.has(node.attrs.src)) {
+        saved.setNodeAttribute(pos, 'src', replacements.get(node.attrs.src));
+      }
+    });
+    state.source.rewriteSavedImages(replacements);
   }
+  state.editor.view.dispatch(saved.setMeta('addToHistory', false).setMeta('preventUpdate', true));
+  state.source.setText(toSourceText(result.content), { context: { lossy: false } });
+  state.source.closeGroup();
+  if (imageKeyChanged && state.editorMounted) state.editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'image' && node.type.name !== 'inlineImage') return;
+    const image = state.editor.view.nodeDOM(pos)?.querySelector('img');
+    if (image) image.src = imageURL(node.attrs.src, result);
+  });
+  const parts = readDocumentParts(result);
+  Object.assign(state, { documentParts: parts, visualOriginal: result.content, baseline: editorMarkdown(state).trimEnd(), baselineMetadata: JSON.stringify(state.metadata) || '', baselinePrefix: parts?.prefix || '', dirty: false, visualLossy: false });
+  state.projection = { markdown: state.baseline, metadata: state.baselineMetadata, content: result.content, lossy: false };
+  if (active) { ({ current, documentParts, baseline, baselineMetadata, dirty } = state); updateDocumentChrome(); updateState(); }
   renderTabs();
 }
 async function toggleMode() {
@@ -757,6 +845,8 @@ async function toggleMode() {
 }
 function toggleOutline(force) {
   const shown = force ?? $('outline').hidden; $('outline').hidden = !shown;
+  if (shown) updateOutline();
+  else if (outlineEntries.length) { outlineEntries = []; outlineLocale = undefined; $('outline-items').replaceChildren(); }
   $('outline-toggle').setAttribute('aria-expanded', String(shown));
   $('outline-toggle').classList.toggle('active', shown);
 }
@@ -793,8 +883,8 @@ async function command(name) {
 $('outline-toggle').addEventListener('click', () => { toggleOutline(); checkpoint.schedule(); });
 $('open').addEventListener('click', () => action(async () => unpack(await api.open())));
 $('new').addEventListener('click', () => action(async () => unpack(await api.newDocument())));
-$('save').addEventListener('click', () => action(() => save()));
-$('save-as').addEventListener('click', () => { hideMenus(); action(() => save(true)); });
+$('save').addEventListener('click', () => saveFromUI(false, true));
+$('save-as').addEventListener('click', () => { hideMenus(); saveFromUI(true, true); });
 $('share-project').addEventListener('click', () => {
   hideMenus();
   if (hasComposition()) { toast(t('请先完成当前文字输入，再导出分享包。')); return; }
@@ -889,6 +979,10 @@ document.addEventListener('pointerdown', event => {
 });
 document.addEventListener('keydown', event => { if (closing || working) { event.preventDefault(); event.stopImmediatePropagation(); } }, true);
 document.addEventListener('keydown', event => {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's' || event.isComposing || event.keyCode === 229 || hasComposition() || document.querySelector('dialog[open]')) return;
+  event.preventDefault(); event.stopImmediatePropagation(); saveFromUI(event.shiftKey);
+}, true);
+document.addEventListener('keydown', event => {
   if (!isMindmap() || !editing || event.isComposing || document.querySelector('dialog[open]')) return;
   if (!(event.ctrlKey || event.metaKey) || event.altKey || !['z','y'].includes(event.key.toLowerCase())) return;
   event.preventDefault(); event.stopImmediatePropagation(); historyCommand(event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo');
@@ -933,11 +1027,17 @@ document.addEventListener('keydown', event => {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.isComposing || document.querySelector('dialog[open]')) return;
   const key = event.key.toLowerCase();
   if (key === 'o') { event.preventDefault(); action(async () => unpack(await api.open())); }
-  else if (key === 's') { event.preventDefault(); action(() => save(event.shiftKey)); }
   else if (key === 'n') { event.preventDefault(); action(async () => unpack(await api.newDocument())); }
   else if (key === 'e' && event.shiftKey) { event.preventDefault(); toggleMode(); }
   else if (key === 'w') { event.preventDefault(); action(async () => unpack(await api.closeTab(current.id))); }
-  else if (key === 'tab') { event.preventDefault(); cycleTabs(event.shiftKey ? -1 : 1); }
+  else if (key === 'tab') {
+    event.preventDefault();
+    const fromTab = Boolean(event.target.closest('[role=tab]'));
+    cycleTabs(event.shiftKey ? -1 : 1)?.then(() => {
+      if (fromTab) $('document-tabs').querySelector('[aria-selected=true]')?.focus({ preventScroll: true });
+      else focusDocument(sessions.get(current?.id));
+    });
+  }
 });
 $('document-tabs').addEventListener('keydown', event => {
   if (!event.target.matches('[role=tab]')) return;
@@ -955,7 +1055,12 @@ document.addEventListener('compositionstart', () => { composing = true; }, true)
 document.addEventListener('compositionend', () => { composing = false; checkpoint.schedule(); }, true);
 document.addEventListener('scroll', () => { if (loaded) checkpoint.schedule(); }, true);
 window.addEventListener('beforeunload', () => checkpoint.stop());
-document.addEventListener('focusin', () => { if (viewMode === 'compare') sessions.get(current?.id)?.source.closeGroup(); updateSelection(); });
+document.addEventListener('focusin', ({ target }) => {
+  const state = sessions.get(current?.id), surface = writingSurface(state, target);
+  if (surface) state.lastWritingSurface = surface;
+  if (viewMode === 'compare') state?.source.closeGroup();
+  updateSelection();
+});
 window.addEventListener('resize', () => { hideMenus(); updateSelection(); revealActiveTab(); });
 document.addEventListener('dragover', event => { event.preventDefault(); });
 document.addEventListener('paste', protectTextInputImagePaste);

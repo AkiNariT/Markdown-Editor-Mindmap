@@ -1,4 +1,6 @@
 import { t, onLocaleChange } from './i18n.mjs';
+import { rewriteImageDestinations } from './markdown-image-paths.mjs';
+import { splitFrontmatter } from './frontmatter.mjs';
 
 export function toSourceText(markdown) { return markdown.replace(/^\ufeff/, '').replace(/\r\n?/g, '\n'); }
 export function fromSourceText(text, original = '') {
@@ -83,6 +85,28 @@ export function createSourceEditor(onInput) {
   refresh();
   return { host, input, refresh,
     destroy: unsubscribeLocale,
+    rewriteSavedImages(replacements) {
+      if (!replacements.size) return;
+      // Relocate only Markdown image destinations, across the current buffer
+      // and both history stacks. A save is not itself an undoable edit.
+      function rewrite(value) {
+        const header = splitFrontmatter(value.text), prefix = header?.prefix || '';
+        const body = header ? header.body : value.text;
+        const rewritten = rewriteImageDestinations(body, replacements, (start, end, length) => {
+          const from = prefix.length + start, to = prefix.length + end;
+          const map = pos => pos <= from ? pos : pos >= to ? pos + length - (to - from) : from + Math.min(pos - from, length);
+          value.start = map(value.start); value.end = map(value.end);
+        });
+        value.text = prefix + rewritten;
+      }
+      const live = snapshot();
+      for (const entry of [...undoStack, ...redoStack, live]) rewrite(entry);
+      if (input.value !== live.text) {
+        input.value = live.text; input.setSelectionRange(live.start, live.end);
+        input.scrollTop = live.scrollLine * lineHeight(); input.scrollLeft = live.left;
+      }
+      before = group = undefined; current = snapshot(); refresh();
+    },
     replaceSelection(text, { start = input.selectionStart, end = input.selectionEnd } = {}) {
       const previous = snapshot();
       // The caller owns edit permissions; an import may finish under a temporary read-only lock.

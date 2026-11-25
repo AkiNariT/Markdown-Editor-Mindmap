@@ -24,10 +24,16 @@ const assert = require('node:assert/strict');
   };
   const idle = () => page.waitForFunction(() => !document.querySelector('#new').disabled);
   const images = async count => {
-    await page.waitForFunction(expected => {
-      const images = [...document.querySelectorAll('.tiptap figure img')];
-      return images.length === expected && images.every(image => image.complete && image.naturalWidth > 0);
-    }, count);
+    try {
+      await page.waitForFunction(expected => {
+        const images = [...document.querySelectorAll('.tiptap figure img, .tiptap span[contenteditable=false] img')];
+        return images.length === expected && images.every(image => image.complete && image.naturalWidth > 0);
+      }, count);
+    } catch (error) {
+      console.error('Image nodes:', await page.locator('.tiptap img').evaluateAll(nodes => nodes.map(img =>
+        ({ parent: img.parentElement.outerHTML.slice(0, 110), alt: img.alt, width: img.naturalWidth }))));
+      throw error;
+    }
     await idle();
   };
   const view = async name => { await page.getByRole('button', { name, exact: true }).click(); await idle(); };
@@ -141,6 +147,7 @@ const assert = require('node:assert/strict');
     if (await page.locator('.tiptap').getAttribute('contenteditable') !== 'true') { await view('编辑'); }
     await page.locator('.tiptap').focus(); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter');
     await dropImages(2); await images(4);
+    assert.equal(await page.locator('.tiptap figure img').count(), 4, 'dropping image files inserts standalone blocks');
     await page.keyboard.press('Control+z'); await images(2);
     await page.keyboard.press('Control+Shift+z'); await images(4);
     console.log('PASS multiple-file drop event inserts and undoes as one operation');

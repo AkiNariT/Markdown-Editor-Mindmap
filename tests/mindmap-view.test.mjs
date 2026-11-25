@@ -31,16 +31,130 @@ const branch = () => ({ ...base(), nodes: [...base().nodes,
   { id: 'b', parent: 'a', text: '主题 B', file: null, collapsed: false },
 ] });
 const nodeButton = (view, id) => view.host.querySelector(`[data-node-id="${id}"]`);
+test('typing keeps existing cards and routes, remeasuring only the edited node', t => {
+  const state = setup(branch()), { view } = state;
+  try {
+    view.setEditable(true);
+    const sibling = nodeButton(view, 'b'), title = nodeButton(view, 'root');
+    const route = view.host.querySelector('.mindmap-branch');
+    const measured = [], segment = Intl.Segmenter.prototype.segment;
+    t.mock.method(Intl.Segmenter.prototype, 'segment', function (text) { measured.push(text); return segment.call(this, text); });
+    input(view, '新标题');
+    assert.equal(nodeButton(view, 'b'), sibling);
+    assert.equal(view.host.querySelector('.mindmap-branch'), route);
+    assert.equal(title.title, '新标题');
+    const before = title.parentElement.style.height;
+    input(view, '长'.repeat(80));
+    assert.equal(nodeButton(view, 'root'), title);
+    assert.notEqual(title.parentElement.style.height, before);
+    assert.equal(measured.includes('主题 B'), false);
+  } finally { state.close(); }
+});
+test('drag previews reuse branch elements and skip measuring unchanged labels', t => {
+  const state = setup(branch()), { view } = state;
+  try {
+    view.setEditable(true); startDrag(view, 'b');
+    const paths = [...view.host.querySelectorAll('.mindmap-branch')];
+    const before = paths.map(path => path.getAttribute('d'));
+    const measure = t.mock.method(Intl.Segmenter.prototype, 'segment');
+    moveDrag(view, 271, 251);
+    const after = [...view.host.querySelectorAll('.mindmap-branch')];
+    assert.equal(paths.length, 2);
+    assert.equal(after[0], paths[0]); assert.equal(after[1], paths[1]);
+    assert.notEqual(after[1].getAttribute('d'), before[1]);
+    assert.equal(measure.mock.callCount(), 0);
+  } finally { state.close(); }
+});
+test('dropping a preview commits its offsets without replacing the displayed cards', () => {
+  const state = setup(branch()), { view } = state;
+  try {
+    const card = nodeButton(view, 'b').parentElement;
+    startDrag(view, 'b'); moveDrag(view, 271, 251);
+    const preview = card.style.cssText;
+    moveDrag(view, 271, 251, 'pointerup');
+    assert.equal(nodeButton(view, 'b').parentElement, card);
+    assert.equal(card.style.cssText, preview); assert.ok(view.getData().nodes[2].offset);
+    assert.equal(view.undo(), true); assert.equal(view.getData().nodes[2].offset, undefined);
+  } finally { state.close(); }
+});
+test('one drag preview updates final stage dimensions only once', t => {
+  const state = setup(branch()), { view } = state;
+  try {
+    startDrag(view, 'b');
+    const layer = view.host.querySelector('.mindmap-lines');
+    const updates = t.mock.method(layer, 'setAttribute');
+    moveDrag(view, 271, 251);
+    assert.equal(updates.mock.calls.filter(call => call.arguments[0] === 'viewBox').length, 1);
+  } finally { state.close(); }
+});
+test('status, dirty checks and checkpoint reads share one serialization per document change', t => {
+  const state = setup(branch()), { view } = state;
+  try {
+    const stringify = JSON.stringify; let serialized = 0;
+    t.mock.method(JSON, 'stringify', function (value, replacer, indent) {
+      if (value?.format === 'md-mindmap' && indent === 2) serialized++;
+      return stringify.call(this, value, replacer, indent);
+    });
+    const original = view.getText();
+    assert.equal(view.getText(), original); assert.equal(serialized, 1);
+    assert.equal(view.getNodeCount(), 3);
+    input(view, '已改'); const changed = view.getText();
+    assert.notEqual(changed, original); assert.equal(view.getText(), changed); assert.equal(serialized, 2);
+    assert.equal(view.undo(), true); assert.equal(view.getText(), original);
+    assert.equal(view.redo(), true); assert.equal(view.getText(), changed);
+    view.setSaved(base()); assert.equal(view.getNodeCount(), 1); assert.equal(JSON.parse(view.getText()).nodes.length, 1);
+  } finally { state.close(); }
+});
+test('changing returned heading metadata cannot leave a map inconsistent with its cached text', () => {
+  const data = branch(); data.version = 7; data.connections = [];
+  Object.assign(data.nodes[1], { file: 'C:/notes.md', headingPath: [{ level: 1, text: 'Section', occurrence: 1 }],
+    headingAnchor: { document: '0'.repeat(64), section: '1'.repeat(64), count: 1, copies: 1 } });
+  const state = setup(data), { view } = state;
+  try {
+    const text = view.getText(), copy = view.getData().nodes[1];
+    copy.headingPath[0].text = '外部修改'; copy.headingAnchor.count++;
+    assert.deepEqual(view.getData(), JSON.parse(text));
+  } finally { state.close(); }
+});
+test('read-mode folds affect visible export only and disappear on entering edit without changing data or history', async () => {
+  const data = branch(); data.nodes[1].collapsed = true;
+  const exports = [];
+  const fixture = setup(data, { onExport: (options, content) => exports.push({ options, data: JSON.parse(content) }) }); const { view } = fixture;
+  try {
+    view.setEditable(false);
+    const original = view.getText(), fold = () => nodeButton(view, 'a').closest('[data-node-card]').querySelector('.mindmap-fold');
+    assert.equal(nodeButton(view, 'b'), null);
+    assert.equal(fold().disabled, false); fold().click();
+    assert.ok(nodeButton(view, 'b')); assert.equal(fold().getAttribute('aria-expanded'), 'true');
+    assert.equal(view.getText(), original); assert.deepEqual(view.getData(), data); assert.deepEqual(fixture.changes, []);
+    view.setLocked(true); assert.equal(fold().disabled, true); view.setLocked(false); view.setEditable(false);
+    assert.ok(nodeButton(view, 'b'));
+    for (const scope of ['current', 'chapters']) {
+      view.host.querySelector('.mindmap-export').click();
+      view.host.querySelector('.mindmap-export-scope').value = scope;
+      view.host.querySelector('.mindmap-export-confirm').click(); await tick();
+    }
+    assert.deepEqual(exports.map(entry => entry.data.nodes[1].collapsed), [false, true]);
+    context(view, 'a'); menuAction(view, 'toggle').click(); assert.equal(nodeButton(view, 'b'), null);
+    fold().click(); view.setEditable(true);
+    assert.equal(nodeButton(view, 'b'), null); assert.deepEqual(fixture.changes, []);
+    assert.equal(view.undo(), false); assert.equal(view.getText(), original);
+    fold().click(); assert.ok(nodeButton(view, 'b')); assert.equal(view.getData().nodes[1].collapsed, false);
+    assert.equal(view.undo(), true); assert.equal(view.getText(), original);
+  } finally { fixture.close(); }
+});
 test('unlinking or manually reassigning an outline node clears only its heading destination and undo restores it', async () => {
   const data = branch(); data.version = 7; data.connections = [];
   const heading = [{ level: 2, text: 'Original', occurrence: 1 }];
-  Object.assign(data.nodes[1], { file: 'C:/notes/first.md', headingPath: heading });
+  const anchor = { document: 'a'.repeat(64), section: 'b'.repeat(64), count: 1, copies: 1 };
+  Object.assign(data.nodes[1], { file: 'C:/notes/first.md', headingPath: heading, headingAnchor: anchor });
   const fixture = setup(data, { onLink: async () => 'C:/notes/second.md' }); const { view } = fixture;
   try {
     nodeButton(view, 'a').click();
     button(view, '取消关联').click();
     assert.equal(view.getData().nodes[1].file, null); assert.equal(view.getData().nodes[1].headingPath, undefined);
-    view.undo(); assert.deepEqual(view.getData().nodes[1].headingPath, heading);
+    assert.equal(view.getData().nodes[1].headingAnchor, undefined);
+    view.undo(); assert.deepEqual(view.getData().nodes[1].headingPath, heading); assert.deepEqual(view.getData().nodes[1].headingAnchor, anchor);
     button(view, '关联 Markdown').click(); await tick();
     assert.equal(view.getData().nodes[1].file, 'C:/notes/second.md'); assert.equal(view.getData().nodes[1].headingPath, undefined);
     view.undo(); assert.deepEqual(view.getData().nodes[1].headingPath, heading); assert.deepEqual(fixture.errors, []);

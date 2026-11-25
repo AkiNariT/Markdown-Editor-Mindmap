@@ -1,5 +1,5 @@
 const { _electron: electron } = require('playwright');
-const { mkdtemp, mkdir, writeFile, readFile, unlink, access } = require('node:fs/promises');
+const { mkdtemp, mkdir, writeFile, readFile, unlink, access, rename, rmdir } = require('node:fs/promises');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 
@@ -86,6 +86,28 @@ async function beginCheckpoint(page) {
 (async () => {
   const base = path.resolve(__dirname, '../.desktop-test'); await mkdir(base, { recursive: true });
   const directory = await mkdtemp(path.join(base, 'recovery-close-'));
+
+  // A failed close must keep both sides of IPC on the same tab for the next Ctrl+S.
+  {
+    const profile = path.join(directory, 'failed-close-profile');
+    const a = path.join(directory, 'active.md'), b = path.join(directory, 'neighbor.md');
+    await writeFile(a, 'original A'); await writeFile(b, 'untouched B');
+    const handle = await launch(profile, [a, b]), id = await select(handle, a);
+    await edit(handle, 'draft A'); await replies(handle, [1]);
+    await stored(profile, state => state.documents.some(item => item.id === id && item.draft === 'draft A'));
+    const backup = path.join(profile, 'session.backup.json');
+    await rename(backup, backup + '.prior'); await mkdir(backup);
+    await handle.page.keyboard.press('Control+w');
+    await handle.page.waitForFunction(() => !document.querySelector('#toast').hidden && !document.querySelector('#save').disabled);
+    assert.equal((await api(handle.page, 'ready')).id, id);
+    assert.equal(await handle.page.locator('#file-path').textContent(), a);
+    await rmdir(backup); await rename(backup + '.prior', backup);
+    await handle.page.keyboard.press('Control+s');
+    await until(() => readFile(a, 'utf8'), content => content === 'draft A', 'Ctrl+S writes A');
+    assert.equal(await readFile(b, 'utf8'), 'untouched B');
+    await abrupt(handle);
+    console.log('PASS failed tab close followed by keyboard save preserves neighboring file');
+  }
 
   // A large live draft cannot replace its recovery copy. It still participates
   // in Save/Discard/Cancel, while the remaining tabs keep checkpointing.
@@ -193,10 +215,10 @@ async function beginCheckpoint(page) {
     assert.match(recovered.recoveryNotice, /外部变化/); assert.match(recovered.recoveryNotice, /无法从原位置读取/);
     for (const item of recovered.documents) assert.equal(item.fingerprint, fingerprints.get(item.path));
     await assertRecovered(handle, missing, oldMissing, missingDraft);
-    const missingSave = await api(handle.page, 'save', missingDraft, false, true); assert.match(missingSave.error, /外部修改或删除/);
+    const missingSave = await api(handle.page, 'save', recovered.documents.find(item => item.path === missing).id, missingDraft, false, true); assert.match(missingSave.error, /外部修改或删除/);
     await assert.rejects(access(missing), { code: 'ENOENT' });
     await assertRecovered(handle, changed, oldChanged, changedDraft);
-    const changedSave = await api(handle.page, 'save', changedDraft, false, true); assert.match(changedSave.error, /外部修改或删除/);
+    const changedSave = await api(handle.page, 'save', recovered.documents.find(item => item.path === changed).id, changedDraft, false, true); assert.match(changedSave.error, /外部修改或删除/);
     assert.equal(await readFile(changed, 'utf8'), external);
     await abrupt(handle); console.log('PASS missing and externally changed originals keep overwrite protection after recovery');
   }

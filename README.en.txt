@@ -36,6 +36,8 @@ Export: Use the map toolbar to select SVG, PNG or PDF, natural/16:9/16:10/A4 lan
 Development build
 Choose More → Export editable ZIP… from a map or Markdown document. Extract the whole ZIP and open the top-level .mdmap or Markdown with this build. It includes linked documents, their referenced local pictures, current edits from open linked tabs and unsaved node drafts. Review missing files and external images before exporting. Ctrl+S continues to save individual documents.
 Use Headings to map on a saved Markdown document, then double-click a heading node or use its star to jump to the original section. Maps with heading locations use format v7 and need a build that supports v7. Earlier maps still open.
+If duplicate headings make the destination unclear, use the line number and section preview to choose a heading. To keep the new destination, rebind the node and save the source map.
+While reading a map, you can expand or collapse branches temporarily. Exporting the visible map uses this view. Switching back to editing restores the map's saved folding state.
 Press Ctrl+F to find text in the active Markdown document. In Split view this searches the active pane. Use Enter or Shift+Enter to move between matches and Esc to return to the previous reading position.
 
 Headings to map: Create a new map from the Markdown heading hierarchy while keeping the original document and tab. Headings inside code blocks or frontmatter are ignored. Saved source files are linked to the new nodes; unsaved drafts create no fictional path. Full lecture text is not embedded in the map.

@@ -44,6 +44,7 @@ async function run() {
     nodes: [node('项目', null), section, node('新稿', '项目')], connections: [relation] });
   await fs.writeFile(map, originalMap);
   const zip = path.join(dir, '发送给同事.zip');
+  let liveDraft;
 
   const app = await launch(map, path.join(dir, '首台配置'));
   try {
@@ -60,13 +61,21 @@ async function run() {
       dialog.showMessageBox = async (_win, options) => { globalThis.shareWarnings.push(options); return { response: options.cancelId }; };
     }, zip);
     await openNode('资料');
+    await page.locator('#heading-options').selectOption('2');
+    await page.locator('#heading-open').click();
     await page.getByRole('button', { name: '源码', exact: true }).click();
     await page.getByRole('button', { name: '编辑', exact: true }).click();
     const source = page.locator('.source-input');
     await source.focus(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('\n尚未保存的修订\n');
     await goBack();
     await openNode('新稿');
-    await page.locator('.tiptap').focus(); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.insertText('草稿中的正文');
+    const draft = page.locator('.tiptap[contenteditable=true]');
+    assert.equal(await draft.locator('h1').textContent(), '新稿');
+    const body = draft.locator('h1 + p');
+    await body.click(); await page.keyboard.insertText('草稿中的正文');
+    assert.equal(await body.textContent(), '草稿中的正文');
+    assert.equal(await draft.locator('h1').textContent(), '新稿');
+    liveDraft = await draft.evaluate(node => node.editor.getMarkdown().replace(/\n*$/, '') + '\n');
     await goBack();
     await share();
     assert.equal(await app.evaluate(() => globalThis.shareSaves), 1);
@@ -84,6 +93,8 @@ async function run() {
   const entry = path.join(extracted, '工作图.mdmap');
   const packagedMap = JSON.parse(await fs.readFile(entry, 'utf8'));
   assert.ok(packagedMap.nodes.filter(n => n.file).every(n => !path.isAbsolute(n.file)));
+  const draftFile = packagedMap.nodes.find(n => n.id === '新稿').file;
+  assert.equal(await fs.readFile(path.join(extracted, draftFile), 'utf8'), liveDraft, 'ZIP 中的新稿必须保留导出前的完整编辑内容与段落结构');
   const bundledSection = packagedMap.nodes.find(n => n.id === '资料');
   for (const field of ['headingPath', 'offset', 'subtitle']) assert.deepEqual(bundledSection[field], section[field]);
   assert.deepEqual(packagedMap.connections[0], relation);
@@ -91,6 +102,8 @@ async function run() {
   try {
     const page = await second.firstWindow();
     await page.locator('[data-node-id="资料"]').dblclick();
+    await page.locator('#heading-options').selectOption('2');
+    await page.locator('#heading-open').click();
     await page.waitForFunction(() => {
       const [range] = CSS.highlights.get('md-linked-heading') || [];
       return range?.startContainer === document.querySelectorAll('.tiptap h2')[1];
@@ -110,7 +123,8 @@ async function run() {
     assert.match(text, /尚未保存的修订/);
     await page.getByRole('tab', { name: '工作图.mdmap', exact: true }).click();
     await page.locator('[data-node-id="新稿"]').dblclick();
-    await page.getByText('草稿中的正文', { exact: true }).waitFor();
+    await page.locator('.tiptap h1').filter({ hasText: /^新稿$/ }).waitFor();
+    await page.locator('.tiptap > p').filter({ hasText: /^草稿中的正文$/ }).waitFor();
   } finally { await close(second); }
   console.log('PASS: ZIP preserves linked changes, pending node draft and offline images under a fresh profile. Missing resources can cancel export.');
 }

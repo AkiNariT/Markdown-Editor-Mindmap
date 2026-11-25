@@ -8,7 +8,11 @@ import { layoutMindmap, measureNode } from './mindmap-layout.mjs';
 
 const NODE_WIDTH = 216, NODE_HEIGHT = 96, COLUMN_GAP = 76, ROW_GAP = 24;
 const clone = value => ({ ...value,
-  nodes: value.nodes.map(node => ({ ...node, ...(node.offset ? { offset: { ...node.offset } } : {}) })),
+  nodes: value.nodes.map(node => ({ ...node,
+    ...(node.offset ? { offset: { ...node.offset } } : {}),
+    ...(node.headingPath ? { headingPath: node.headingPath.map(part => ({ ...part })) } : {}),
+    ...(node.headingAnchor ? { headingAnchor: { ...node.headingAnchor } } : {}),
+  })),
   ...(value.connections ? { connections: value.connections.map(connection => ({ ...connection })) } : {}),
 });
 const fileKey = path => typeof path === 'string' ? path.replaceAll('\\', '/').toLowerCase() : path;
@@ -16,6 +20,7 @@ const fileName = path => path?.split(/[\\/]/).at(-1) || '';
 
 export function createMindmapView(initialData, options = {}) {
   let data = validateMindmap(initialData), selected = data.root;
+  let serializedData;
   let selectedNodes = new Set([selected]);
   let editable = true, locked = false, destroyed = false, composing = false, textBefore = null;
   let zoom = 100, pendingLink = false, pendingCreate = false, deleteTarget = null, drag = null, initialized = false;
@@ -26,6 +31,11 @@ export function createMindmapView(initialData, options = {}) {
   let menuCanvasPosition = null;
   let suppressOpenUntil = 0;
   const undoStack = [], redoStack = [], nodeElements = new Map();
+  const measurements = new Map(), branches = new Map();
+  const readingFolds = new Map();
+  const isCollapsed = item => readingFolds.get(item.id) ?? item.collapsed;
+  const visibleMap = () => readingFolds.size ? { ...data, nodes: data.nodes.map(item =>
+    readingFolds.has(item.id) ? { ...item, collapsed: isCollapsed(item) } : item) } : data;
   const host = document.createElement('section');
   host.className = 'mindmap-view'; host.setAttribute('aria-label', t('思维导图'));
   const toolbar = document.createElement('div'); toolbar.className = 'mindmap-toolbar'; toolbar.setAttribute('aria-label', t('思维导图工具'));
@@ -82,7 +92,10 @@ export function createMindmapView(initialData, options = {}) {
   const exportConfirm = makeButton('保存导出', async () => {
     if (locked || composing || destroyed || !options.onExport) return;
     finishText(); exportConfirm.disabled = true;
-    try { await options.onExport({ format: exportFormat.value, preset: exportPreset.value, scope: exportScope.value }); }
+    try {
+      const scope = exportScope.value;
+      await options.onExport({ format: exportFormat.value, preset: exportPreset.value, scope }, serializeMindmap(scope === 'current' ? visibleMap() : data));
+    }
     catch (error) { if (!destroyed) report(error); }
     finally { if (!destroyed) { exportConfirm.disabled = locked; exportPanel.hidden = true; } }
   }, 'mindmap-export-confirm');
@@ -94,6 +107,8 @@ export function createMindmapView(initialData, options = {}) {
   const stage = document.createElement('div'); stage.className = 'mindmap-stage';
   const world = document.createElement('div'); world.className = 'mindmap-world';
   const lines = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); lines.classList.add('mindmap-lines'); lines.setAttribute('aria-hidden', 'true');
+  const branchLayer = document.createElementNS(lines.namespaceURI, 'g'), edgeLayer = document.createElementNS(lines.namespaceURI, 'g');
+  lines.append(branchLayer, edgeLayer);
   const nodesLayer = document.createElement('div'); nodesLayer.className = 'mindmap-nodes';
   const connectionLabels = document.createElement('div'); connectionLabels.className = 'mindmap-connection-labels';
   const guides = document.createElementNS(lines.namespaceURI, 'svg'); guides.classList.add('mindmap-guides'); guides.setAttribute('aria-hidden', 'true');
@@ -106,7 +121,7 @@ export function createMindmapView(initialData, options = {}) {
   const snapshot = () => ({ data: clone(data), selected, selectedNodes: [...selectedNodes], selectedConnection });
   const report = error => options.onError?.(error instanceof Error ? error.message : String(error));
   function push(stack, value) { stack.push(value); if (stack.length > 100) stack.shift(); }
-  function changed() { options.onChange?.(); }
+  function changed() { serializedData = undefined; options.onChange?.(); }
   function resetHint() {
     hint.textContent = connectionSource ? t('点击要连接的节点 · Esc 取消') : editable
       ? selectedNodes.size > 1 ? t('已选 {count} 个节点 · 拖动一起移动并对齐 · Alt 暂停吸附', { count: selectedNodes.size })
@@ -119,7 +134,7 @@ export function createMindmapView(initialData, options = {}) {
     if (JSON.stringify(textBefore.data) !== JSON.stringify(data)) push(undoStack, textBefore);
     textBefore = null;
   }
-  function mutate(operation, { allowLocked = false, allowBackground = false } = {}) {
+  function mutate(operation, { allowLocked = false, allowBackground = false, offsetsAlreadyDrawn = false } = {}) {
     if (destroyed || (locked && !allowBackground) || composing || (!editable && !allowLocked)) return false;
     cancelDrag(); closeMenu(); finishText();
     const before = snapshot(), draft = clone(data);
@@ -134,7 +149,9 @@ export function createMindmapView(initialData, options = {}) {
     selected = node(nextSelection) ? nextSelection : data.root;
     if (selected !== before.selected) selectedNodes = new Set([selected]);
     if (selected !== before.selected || !connection(selectedConnection)) selectedConnection = null;
-    dismissDelete(); render(); changed(); return true;
+    dismissDelete();
+    if (offsetsAlreadyDrawn) renderSelection(); else render();
+    changed(); return true;
   }
   function makeButton(text, action, className = 'mindmap-tool') {
     const button = document.createElement('button'); button.type = 'button'; button.className = className;
@@ -146,7 +163,7 @@ export function createMindmapView(initialData, options = {}) {
   const deleteButton = makeButton('删除', requestDelete);
   const linkButton = makeButton('关联 Markdown', linkSelected);
   const openButton = makeButton('打开文件', () => openNode(selected));
-  const unlinkButton = makeButton('取消关联', () => mutate(draft => { const item = draft.nodes.find(item => item.id === selected); item.file = null; delete item.headingPath; }));
+  const unlinkButton = makeButton('取消关联', () => mutate(draft => { const item = draft.nodes.find(item => item.id === selected); item.file = null; delete item.headingPath; delete item.headingAnchor; }));
   const collapseButton = makeButton('折叠', () => toggleCollapsed(selected));
   const centerButton = makeButton('居中', centerRoot);
   const compactButton = makeButton('整理布局', () => { if (mutate(draft => { for (const item of draft.nodes) delete item.offset; })) centerRoot(); }, 'mindmap-tool mindmap-compact');
@@ -166,7 +183,13 @@ export function createMindmapView(initialData, options = {}) {
       selected = id;
       if (!preserve || !selectedNodes.has(id)) selectedNodes = new Set([id]);
     }
-    selectedConnection = null; dismissDelete(); preserveCanvasOrigin(() => { renderSelection(); renderLines(); });
+    const previousConnection = selectedConnection;
+    selectedConnection = null; dismissDelete(); preserveCanvasOrigin(renderSelection);
+    if (previousConnection) {
+      lines.querySelector('.mindmap-connection-selected')?.classList.remove('mindmap-connection-selected');
+      const label = connectionLabels.querySelector('.mindmap-connection-label-selected');
+      label?.classList.remove('mindmap-connection-label-selected'); label?.setAttribute('aria-pressed', 'false');
+    }
     if (focusCanvas) canvas.focus({ preventScroll: true });
   }
   function preserveCanvasOrigin(update) {
@@ -239,7 +262,13 @@ export function createMindmapView(initialData, options = {}) {
     })) canvas.focus({ preventScroll: true });
   }
   function toggleCollapsed(id) {
-    if (!data.nodes.some(item => item.parent === id)) return;
+    if (locked || composing || destroyed || !data.nodes.some(item => item.parent === id)) return;
+    if (!editable) {
+      if (readingFolds.has(id)) readingFolds.delete(id);
+      else readingFolds.set(id, !node(id).collapsed);
+      render();
+      return;
+    }
     mutate(draft => { const item = draft.nodes.find(item => item.id === id); item.collapsed = !item.collapsed; return id; });
   }
   async function linkSelected() {
@@ -247,7 +276,7 @@ export function createMindmapView(initialData, options = {}) {
     finishText(); const id = selected; pendingLink = true; renderSelection();
     try {
       const path = await options.onLink(id);
-      if (path && !destroyed && node(id)) mutate(draft => { const item = draft.nodes.find(item => item.id === id); item.file = path; delete item.headingPath; }, { allowLocked: true });
+      if (path && !destroyed && node(id)) mutate(draft => { const item = draft.nodes.find(item => item.id === id); item.file = path; delete item.headingPath; delete item.headingAnchor; }, { allowLocked: true });
     } catch (error) { if (!destroyed) report(error); }
     finally { pendingLink = false; if (!destroyed) renderSelection(); }
   }
@@ -266,6 +295,14 @@ export function createMindmapView(initialData, options = {}) {
   function attachFile(id, path) {
     if (!node(id) || node(id).file) return false;
     return mutate(draft => { draft.nodes.find(item => item.id === id).file = path; }, { allowLocked: true, allowBackground: true });
+  }
+  function rebindHeading(link, heading) {
+    const item = node(link.nodeId);
+    if (item?.file !== link.file || JSON.stringify(item.headingPath) !== JSON.stringify(link.headingPath)) return false;
+    return mutate(draft => {
+      const target = draft.nodes.find(n => n.id === link.nodeId);
+      target.headingPath = heading.path; target.headingAnchor = heading.anchor;
+    }, { allowLocked: true, allowBackground: true });
   }
   function beginConnection() {
     if (!editable || locked || composing || destroyed || selectedNodes.size !== 1) return;
@@ -302,7 +339,7 @@ export function createMindmapView(initialData, options = {}) {
     if (value.length > 500) { report(t('节点文字最多支持 500 个字符。')); input.value = current.text; return; }
     if (!textBefore) textBefore = snapshot();
     current.text = value; redoStack.length = 0;
-    render(); changed();
+    updateNodeText(current); changed();
   }
   function applySubtitle() {
     if (!editable || locked || destroyed || composing || selectedNodes.size !== 1) return;
@@ -312,7 +349,7 @@ export function createMindmapView(initialData, options = {}) {
     if (!textBefore) textBefore = snapshot();
     data.version = Math.max(data.version, 6); data.connections ||= [];
     if (value) current.subtitle = value; else delete current.subtitle;
-    redoStack.length = 0; render(); changed();
+    redoStack.length = 0; updateNodeText(current); changed();
   }
   function setMapOption(key, value) {
     mutate(draft => { draft.version = Math.max(draft.version, 6); draft.connections ||= []; draft[key] = value; });
@@ -442,10 +479,10 @@ export function createMindmapView(initialData, options = {}) {
     linkButton.disabled = !editable || locked || multiple || pendingLink || !options.onLink;
     openButton.disabled = locked || multiple || !current.file || !options.onOpen;
     unlinkButton.disabled = !editable || locked || multiple || !current.file;
-    collapseButton.disabled = !editable || locked || multiple || !data.nodes.some(item => item.parent === current.id);
+    collapseButton.disabled = locked || multiple || !data.nodes.some(item => item.parent === current.id);
     centerButton.disabled = locked; confirmButton.disabled = !editable || locked;
     cancelButton.disabled = locked;
-    collapseButton.textContent = t(current.collapsed ? '展开' : '折叠'); collapseButton.setAttribute('aria-label', collapseButton.textContent);
+    collapseButton.textContent = t(isCollapsed(current) ? '展开' : '折叠'); collapseButton.setAttribute('aria-label', collapseButton.textContent);
     host.classList.toggle('mindmap-readonly', !editable);
     host.classList.toggle('mindmap-locked', locked);
     host.classList.toggle('mindmap-connecting', Boolean(connectionSource));
@@ -455,16 +492,38 @@ export function createMindmapView(initialData, options = {}) {
       elements.button.setAttribute('aria-pressed', String(selectedNodes.has(id)));
       elements.button.disabled = locked;
       if (elements.attachment) elements.attachment.disabled = locked || !options.onOpen;
-      if (elements.fold) elements.fold.disabled = !editable || locked;
+      if (elements.fold) elements.fold.disabled = locked;
     }
     resetHint();
+  }
+  function nodeMetrics(item) {
+    const cached = measurements.get(item.id), linked = Boolean(item.file);
+    if (cached && cached.text === item.text && cached.subtitle === item.subtitle && cached.linked === linked && cached.size === data.nodeSize) return cached.metrics;
+    const metrics = measureNode(item, data.nodeSize);
+    measurements.set(item.id, { text: item.text, subtitle: item.subtitle, linked, size: data.nodeSize, metrics });
+    return metrics;
+  }
+  function updateNodeText(item) {
+    const { card, button, title } = nodeElements.get(item.id);
+    const metrics = nodeMetrics(item), position = positions.get(item.id);
+    button.title = item.text; button.setAttribute('aria-label', item.text || t('未命名主题'));
+    title.textContent = metrics.titleLines.join('\n') || t('未命名主题');
+    let subtitle = button.querySelector('.mindmap-node-subtitle');
+    if (item.subtitle) {
+      if (!subtitle) { subtitle = document.createElement('span'); subtitle.className = 'mindmap-node-subtitle'; button.append(subtitle); }
+      subtitle.textContent = metrics.subtitleLines.join('\n');
+    } else subtitle?.remove();
+    if (metrics.height === position.height) return;
+    const artwork = card.querySelector('.mindmap-node-art');
+    if (artwork) artwork.replaceWith(createNodeArtwork(document, data.theme, metrics));
+    previewLayout();
   }
   function measureTree() {
     if (!initialized && !restoredLayoutPadding && canvas.clientWidth && canvas.clientHeight) {
       layoutPadding = { x: Math.max(180, canvas.clientWidth / (zoom / 100) / 2), y: Math.max(120, canvas.clientHeight / (zoom / 100) / 2) };
     }
     const { x: paddingX, y: paddingY } = layoutPadding;
-    const layout = layoutMindmap(data, { paddingX, paddingY, drag: drag?.kind === 'node' ? drag : null });
+    const layout = layoutMindmap(visibleMap(), { paddingX, paddingY, drag: drag?.kind === 'node' ? drag : null, measure: nodeMetrics });
     positions = layout.positions;
     // A loaded map or a changed tree can bring an offset past the origin.
     // Retain the added canvas padding so later drags do not move stationary
@@ -489,13 +548,14 @@ export function createMindmapView(initialData, options = {}) {
       layer.setAttribute('viewBox', `0 0 ${dimensions.width} ${dimensions.height}`);
     }
   }
-  function renderLines() {
-    lines.replaceChildren(); connectionLabels.replaceChildren();
+  function renderLines({ movedIds, previousPositions, viewport } = {}) {
+    if (!movedIds) { branches.clear(); branchLayer.replaceChildren(); }
+    edgeLayer.replaceChildren(); connectionLabels.replaceChildren();
     const labels = [];
     const byId = new Map(data.nodes.map(item => [item.id, item]));
-    const router = createMindmapRouter(positions, { width: NODE_WIDTH, height: NODE_HEIGHT, columnGap: COLUMN_GAP });
-    const routeBetween = (from, to, options) => {
-      const route = router.route(from, to, options);
+    const router = createMindmapRouter(positions, { width: NODE_WIDTH, height: NODE_HEIGHT, columnGap: COLUMN_GAP, movedIds, previousPositions, cacheCorridors: true });
+    const routeBetween = (from, to, options, previous) => {
+      const route = router.route(from, to, options, previous);
       if (route) {
         dimensions.width = Math.max(dimensions.width, route.bounds.right + 24);
         dimensions.height = Math.max(dimensions.height, route.bounds.bottom + 24);
@@ -506,21 +566,24 @@ export function createMindmapView(initialData, options = {}) {
       const position = positions.get(item.id); if (!position) continue;
       if (item.parent !== null) {
         const parent = positions.get(item.parent);
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.classList.add('mindmap-branch');
-        const route = routeBetween(item.parent, item.id, { lineStyle: data.lineStyle, crystal: !data.lineStyle && data.theme === 'crystal' });
-        path.setAttribute('d', route.d);
-        if (data.theme === 'tree') {
+        const old = branches.get(item.id);
+        const route = routeBetween(item.parent, item.id, { lineStyle: data.lineStyle, crystal: !data.lineStyle && data.theme === 'crystal' }, old?.route);
+        if (old && route === old.route) continue;
+        const path = old?.path || document.createElementNS(lines.namespaceURI, 'path');
+        if (!old) { path.classList.add('mindmap-branch'); branchLayer.append(path); }
+        if (route.d !== old?.route.d) path.setAttribute('d', route.d);
+        if (!old && data.theme === 'tree') {
           let depth = 0, ancestor = item;
           while (ancestor.parent !== null) { depth++; ancestor = byId.get(ancestor.parent); }
           path.style.strokeWidth = String(Math.max(1.6, 5 - depth * .65));
         }
-        lines.append(path);
+        let leaf = old?.leaf;
         if (data.theme === 'vine' && !route.rerouted && !route.blocked && position.x - parent.x > parent.width + 38) {
-          const leaf = document.createElementNS(lines.namespaceURI, 'path'); leaf.classList.add('mindmap-vine-leaf');
+          if (!leaf) { leaf = document.createElementNS(lines.namespaceURI, 'path'); leaf.classList.add('mindmap-vine-leaf'); path.after(leaf); }
           const x = position.x - 21, y = position.y + position.height / 2;
-          leaf.setAttribute('d', `M ${x} ${y} Q ${x - 15} ${y - 3} ${x - 10} ${y - 16} Q ${x + 3} ${y - 13} ${x} ${y} Z`); lines.append(leaf);
-        }
+          leaf.setAttribute('d', `M ${x} ${y} Q ${x - 15} ${y - 3} ${x - 10} ${y - 16} Q ${x + 3} ${y - 13} ${x} ${y} Z`);
+        } else if (leaf) { leaf.remove(); leaf = null; }
+        branches.set(item.id, { route, path, leaf });
       }
     }
     for (const connection of data.connections || []) {
@@ -542,11 +605,11 @@ export function createMindmapView(initialData, options = {}) {
         marker.setAttribute('markerUnits', 'userSpaceOnUse');
         marker.setAttribute('markerWidth', arrowSize); marker.setAttribute('markerHeight', arrowSize); marker.setAttribute('orient', 'auto-start-reverse');
         const arrow = document.createElementNS(lines.namespaceURI, 'polygon'); arrow.setAttribute('points', '0,0 10,5 0,10'); arrow.style.fill = connection.color || 'var(--text)'; marker.append(arrow);
-        const defs = document.createElementNS(lines.namespaceURI, 'defs'); defs.append(marker); lines.append(defs);
+        const defs = document.createElementNS(lines.namespaceURI, 'defs'); defs.append(marker); edgeLayer.append(defs);
         path.setAttribute('marker-end', `url(#${markerId})`);
         if (connection.arrow === 'both') path.setAttribute('marker-start', `url(#${markerId})`);
       }
-      path.dataset.connectionLine = connection.id; path.setAttribute('d', curve); lines.append(path);
+      path.dataset.connectionLine = connection.id; path.setAttribute('d', curve); edgeLayer.append(path);
       const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       hit.classList.add('mindmap-connection-hit'); hit.dataset.connectionId = connection.id; hit.setAttribute('d', curve);
       hit.addEventListener('click', event => {
@@ -554,7 +617,7 @@ export function createMindmapView(initialData, options = {}) {
         event.stopPropagation(); selectConnection(connection.id);
       });
       hit.addEventListener('dblclick', event => { event.stopPropagation(); selectConnection(connection.id, true); });
-      lines.append(hit);
+      edgeLayer.append(hit);
       if (connection.label) {
         const label = document.createElement('button'); label.type = 'button'; label.className = 'mindmap-connection-label';
         label.dataset.connectionId = connection.id; label.dataset.connectionLabel = connection.id;
@@ -568,7 +631,7 @@ export function createMindmapView(initialData, options = {}) {
       }
     }
     placeConnectionLabels(labels);
-    sizeStage();
+    sizeStage(viewport);
   }
   function clearLabelDistance(anchor, direction, width, height, obstacles) {
     const x = anchor.x, y = anchor.y, dx = direction.x, dy = direction.y;
@@ -634,18 +697,28 @@ export function createMindmapView(initialData, options = {}) {
         const edge = Math.min(x ? width / 2 / Math.abs(x) : Infinity, y ? height / 2 / Math.abs(y) : Infinity, 1);
         const leader = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         leader.classList.add('mindmap-connection-leader'); leader.dataset.connectionLeader = id;
-        leader.setAttribute('d', `M ${anchor.x} ${anchor.y} L ${best.x - x * edge} ${best.y - y * edge}`); lines.append(leader);
+        leader.setAttribute('d', `M ${anchor.x} ${anchor.y} L ${best.x - x * edge} ${best.y - y * edge}`); edgeLayer.append(leader);
       }
     }
-    sizeStage();
   }
   function previewLayout() {
+    const previous = positions;
     measureTree();
+    const movedIds = new Set();
+    for (const [id, position] of positions) {
+      const before = previous.get(id), card = nodeElements.get(id).card;
+      if (before.x === position.x && before.y === position.y && before.width === position.width && before.height === position.height) continue;
+      movedIds.add(id);
+      if (before.x !== position.x) card.style.left = `${position.x}px`;
+      if (before.y !== position.y) card.style.top = `${position.y}px`;
+      if (before.width !== position.width) card.style.width = `${position.width}px`;
+      if (before.height !== position.height) card.style.height = `${position.height}px`;
+    }
     const viewport = drag?.kind === 'node' ? {
       left: drag.originScroll.left + (layoutPadding.x - drag.originPadding.x) * zoom / 100,
       top: drag.originScroll.top + (layoutPadding.y - drag.originPadding.y) * zoom / 100,
     } : undefined;
-    sizeStage(viewport); renderLines();
+    renderLines({ movedIds, previousPositions: previous, viewport });
     if (viewport) {
       // A branch can extend beyond the original top/left canvas edge. Move the
       // viewport by the added padding so nodes still follow the pointer and
@@ -654,20 +727,16 @@ export function createMindmapView(initialData, options = {}) {
       canvas.scrollLeft = viewport.left; canvas.scrollTop = viewport.top;
       capturePosition();
     }
-    for (const [id, elements] of nodeElements) {
-      const position = positions.get(id);
-      elements.card.style.left = `${position.x}px`; elements.card.style.top = `${position.y}px`;
-      elements.card.style.width = `${position.width}px`; elements.card.style.height = `${position.height}px`;
-    }
   }
   function render() {
     const activeNode = document.activeElement?.getAttribute('data-node-id');
     host.dataset.mapTheme = data.theme || 'classic';
     host.classList.toggle('mindmap-explicit-theme', Object.hasOwn(data, 'theme'));
     const children = measureTree(); sizeStage(); renderLines(); nodesLayer.replaceChildren(); nodeElements.clear();
+    for (const id of measurements.keys()) if (!children.has(id)) measurements.delete(id);
     for (const item of data.nodes) {
       const position = positions.get(item.id); if (!position) continue;
-      const metrics = measureNode(item, data.nodeSize || 'standard');
+      const metrics = nodeMetrics(item);
       const card = document.createElement('div'); card.className = 'mindmap-node';
       applyNodeAppearance(card, item);
       const artwork = createNodeArtwork(document, data.theme, position); if (artwork) card.append(artwork);
@@ -700,8 +769,10 @@ export function createMindmapView(initialData, options = {}) {
       }
       let fold;
       if (children.get(item.id).length) {
-        fold = makeButton(item.collapsed ? `+${descendants(item.id).size - 1}` : '−', () => { select(item.id); toggleCollapsed(item.id); }, 'mindmap-fold');
-        fold.setAttribute('aria-label', t(item.collapsed ? '展开子主题' : '折叠子主题')); card.append(fold);
+        const collapsed = isCollapsed(item);
+        fold = makeButton(collapsed ? `+${descendants(item.id).size - 1}` : '−', () => { select(item.id); toggleCollapsed(item.id); }, 'mindmap-fold');
+        fold.setAttribute('aria-expanded', String(!collapsed));
+        fold.setAttribute('aria-label', t(collapsed ? '展开子主题' : '折叠子主题')); card.append(fold);
       }
       nodeElements.set(item.id, { card, button, title, fold, attachment }); nodesLayer.append(card);
     }
@@ -801,7 +872,7 @@ export function createMindmapView(initialData, options = {}) {
       add('link-markdown', '关联 Markdown 文件', linkSelected, linkButton.disabled);
       add('open', '打开文件', () => openNode(selected), openButton.disabled);
       add('unlink', '取消关联', () => unlinkButton.click(), unlinkButton.disabled);
-      add('toggle', current.collapsed ? '展开子主题' : '折叠子主题', () => toggleCollapsed(selected), collapseButton.disabled);
+      add('toggle', isCollapsed(current) ? '展开子主题' : '折叠子主题', () => toggleCollapsed(selected), collapseButton.disabled);
       add('delete', '删除', requestDelete, deleteButton.disabled);
       add('reset-layout', '恢复自动布局', () => mutate(draft => { for (const item of draft.nodes) if (selectedNodes.has(item.id)) delete item.offset; }), !editable || !data.nodes.some(item => selectedNodes.has(item.id) && item.offset));
       add('compact-layout', '整理布局', () => compactButton.click(), compactButton.disabled);
@@ -945,11 +1016,16 @@ export function createMindmapView(initialData, options = {}) {
     if (!drag || drag.id !== event.pointerId) return;
     const previous = releaseDrag();
     if (previous.kind !== 'node' || !previous.moved) return;
-    suppressClickUntil = Date.now() + 400; previewLayout();
-    if (previous.dx || previous.dy) mutate(draft => {
+    suppressClickUntil = Date.now() + 400;
+    if (!previous.dx && !previous.dy) return;
+    const committed = mutate(draft => {
       draft.version = Math.max(draft.version, 2); draft.connections ||= [];
-      for (const [id, offset] of previous.offsets) draft.nodes.find(item => item.id === id).offset = { x: offset.x + previous.dx, y: offset.y + previous.dy };
-    });
+      for (const item of draft.nodes) {
+        const offset = previous.offsets.get(item.id);
+        if (offset) item.offset = { x: offset.x + previous.dx, y: offset.y + previous.dy };
+      }
+    }, { offsetsAlreadyDrawn: true });
+    if (!committed) previewLayout();
   });
   const cancelPointer = event => { if (drag?.id === event.pointerId) cancelDrag(); };
   canvas.addEventListener('pointercancel', cancelPointer); canvas.addEventListener('lostpointercapture', cancelPointer);
@@ -1012,13 +1088,13 @@ export function createMindmapView(initialData, options = {}) {
     for (const button of host.querySelectorAll('[data-mindmap-label]')) {
       const text = t(button.dataset.mindmapLabel); button.textContent = text; button.setAttribute('aria-label', text);
     }
-    const collapseText = t(node(selected).collapsed ? '展开' : '折叠');
+    const collapseText = t(isCollapsed(node(selected)) ? '展开' : '折叠');
     collapseButton.textContent = collapseText; collapseButton.setAttribute('aria-label', collapseText);
     for (const [id, elements] of nodeElements) {
       const current = node(id);
       if (!current.text) { elements.title.textContent = t('未命名主题'); elements.button.setAttribute('aria-label', t('未命名主题')); }
       if (elements.attachment) elements.attachment.setAttribute('aria-label', t('打开关联文件：{name}', { name: fileName(current.file) }));
-      if (elements.fold) elements.fold.setAttribute('aria-label', t(current.collapsed ? '展开子主题' : '折叠子主题'));
+      if (elements.fold) elements.fold.setAttribute('aria-label', t(isCollapsed(current) ? '展开子主题' : '折叠子主题'));
     }
     resetHint(); refreshDeleteMessage();
     for (const label of connectionLabels.children) label.setAttribute('aria-label', t('连接说明：{text}', { text: connection(label.dataset.connectionLabel)?.label || '' }));
@@ -1048,7 +1124,7 @@ export function createMindmapView(initialData, options = {}) {
   }) : null;
   observer?.observe(canvas); render();
   return {
-    host, getData: () => clone(data), getText: () => serializeMindmap(data),
+    host, getData: () => clone(data), getNodeCount: () => data.nodes.length, getText: () => serializedData ??= serializeMindmap(data),
     setSaved(nextData) {
       const next = validateMindmap(nextData); dismissTransient(); finishText();
       for (const nextNode of next.nodes) {
@@ -1057,7 +1133,7 @@ export function createMindmapView(initialData, options = {}) {
           for (const item of [...undoStack, ...redoStack]) rewriteLinks(item.data, previous.file, nextNode.file);
         }
       }
-      data = next; if (!node(selected)) selected = data.root;
+      data = next; serializedData = undefined; if (!node(selected)) selected = data.root;
       render();
     },
     setEditable(value) {
@@ -1066,7 +1142,10 @@ export function createMindmapView(initialData, options = {}) {
       if (!value) { finishText(); dismissDelete(); }
       const previousRect = canvas.getBoundingClientRect(), previousPosition = { left: canvas.scrollLeft, top: canvas.scrollTop };
       const modeChanged = editable !== Boolean(value);
-      editable = Boolean(value); renderSelection(); resetHint();
+      editable = Boolean(value);
+      if (modeChanged && editable && readingFolds.size) { readingFolds.clear(); render(); }
+      else renderSelection();
+      resetHint();
       if (modeChanged && host.isConnected && !pendingSessionPosition) {
         const nextRect = canvas.getBoundingClientRect();
         canvas.scrollLeft = Math.max(0, previousPosition.left + nextRect.left - previousRect.left);
@@ -1085,7 +1164,7 @@ export function createMindmapView(initialData, options = {}) {
     refreshTheme: () => { if (!destroyed) { for (const [id, elements] of nodeElements) applyNodeAppearance(elements.card, node(id)); renderSelection(); } },
     setZoom, getZoom: () => zoom, capturePosition, restorePosition, captureSessionState, restoreSessionState,
     focus: () => canvas.focus({ preventScroll: true }),
-    undo: () => travel(undoStack, redoStack), redo: () => travel(redoStack, undoStack), replaceFile, attachFile,
+    undo: () => travel(undoStack, redoStack), redo: () => travel(redoStack, undoStack), replaceFile, attachFile, rebindHeading,
     destroy() {
       destroyed = true; unsubscribeLocale(); observer?.disconnect(); releaseDrag(); closeMenu();
       document.removeEventListener('pointerdown', outsidePointer, true);

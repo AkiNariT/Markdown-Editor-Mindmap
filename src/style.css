@@ -129,6 +129,9 @@ dialog{max-width:calc(100vw - 32px);max-height:calc(100vh - 48px);overflow-y:aut
 @media(max-width:760px){#update-dialog{padding:22px}.update-actions button{padding:8px 12px}}
 #language-select{display:block;width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-top:7px}
 #language-select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#heading-choice { width: min(570px, 90vw); }
+#heading-options { width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+#heading-choice-preview { min-height: 1.5em; overflow-wrap: anywhere; }
 html[lang=en] .aside-heading,html[lang=en] .page-bar{letter-spacing:.3px}
 html[lang=en] .text-button,html[lang=en] .mode-button{white-space:nowrap}
 @media(max-width:950px){html[lang=en] .topbar{gap:10px}html[lang=en] .document-label{max-width:140px}}

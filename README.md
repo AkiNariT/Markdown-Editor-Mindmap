@@ -53,7 +53,7 @@ Markdown-Editor-Mindmap（简称 MD）是一款极简的 Markdown 桌面阅读�
 下载开发版时，登录 GitHub，进入 [Windows 构建记录](https://github.com/AkiNariT/Markdown-Editor-Mindmap/actions/workflows/windows-package.yml?query=branch%3Amain)，打开最近一次成功且包含程序产物的 `main` 构建。在 **Artifacts** 中下载 `MD-Windows-x64-dev-…`，完整解压后运行 `MD.exe`。
 
 - **把项目发到另一台电脑。** 打开导图，选择「更多操作 → 导出可编辑分享包…」。ZIP 顶层的 `.mdmap` 是入口，`documents/` 存放节点关联的 Markdown，`assets/` 存放引用的本地图片。已打开文档的最新编辑和从节点新建的未保存草稿也会进入导出副本。接收方完整解压后，用这个开发构建打开导图即可继续编辑。直接从 Markdown 导出时，入口是顶层的 Markdown 文件。
-- **从导图回到原文。** 对已保存的 Markdown 使用「标题转导图」，双击生成的标题节点即可跳到对应小节并短暂高亮。同名标题按上级标题和出现顺序区分。这类新导图使用 v7，公开版 0.1.32 最多读取 v6。旧导图和手动关联仍可在新构建中打开。
+- **从导图回到原文。** 对已保存的 Markdown 使用「标题转导图」，双击生成的标题节点即可跳到对应小节并短暂高亮。同名小节调整顺序后，会按章节内容辨认；有多个可能位置时，可按行号和正文预览选择，也可重新绑定节点。这类新导图使用 v7，公开版 0.1.32 最多读取 v6。旧导图和手动关联仍可在新构建中打开。
 - **在当前文档中查找。** 按 `Ctrl+F` 输入文字，`Enter` 和 `Shift+Enter` 切换匹配，`Esc` 关闭并回到原阅读位置。对照模式查找当前操作的一侧。
 
 导出会先列出缺失文件或外部图片，可取消并补齐，也可继续导出已有资料。Markdown 正文里的普通文件超链接保留原文。需要随包发送的 Markdown 请关联到导图节点。平时按 `Ctrl+S` 仍分别保存导图和 Markdown。

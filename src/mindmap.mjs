@@ -46,6 +46,12 @@ export function validateMindmap(value) {
       }
       normalized.headingPath = parts.map(({ level, text, occurrence }) => ({ level, text, occurrence }));
     }
+    if (Object.hasOwn(item, 'headingAnchor')) {
+      const anchor = item.headingAnchor;
+      if (!normalized.headingPath || !isRecord(anchor) || ![anchor.document, anchor.section].every(hash => typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash)) ||
+          ![anchor.count, anchor.copies].every(n => Number.isSafeInteger(n) && n >= 1) || anchor.copies > anchor.count) throw new Error(t('关联标题的上下文信息无效。'));
+      normalized.headingAnchor = { document: anchor.document, section: anchor.section, count: anchor.count, copies: anchor.copies };
+    }
     if (Object.hasOwn(item, 'subtitle')) {
       if (value.version < 6 || typeof item.subtitle !== 'string' || item.subtitle.length > 500) throw new Error(t('节点副标题无效，需要使用第 6 版格式，且不超过 500 个字符。'));
       normalized.subtitle = item.subtitle;

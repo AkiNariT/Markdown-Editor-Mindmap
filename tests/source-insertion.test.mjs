@@ -27,6 +27,21 @@ function type(source, text) {
   source.input.dispatchEvent(new dom.window.InputEvent('input', { inputType: 'insertText', data: text }));
 }
 
+test('saving relocates image destinations and cursor offsets through both source history stacks', t => {
+  const original = '---\nlabel: "![x](a.png)"\n---\n\n![x](a.png) + `![x](a.png)`';
+  const saved = original.replace('\n\n![x](a.png)', '\n\n![x](../a.png)');
+  const source = setup(t, original);
+  source.input.setSelectionRange(original.length, original.length);
+  type(source, 'A'); source.replaceSelection('B'); source.undo();
+  source.rewriteSavedImages(new Map([['a.png', '../a.png']]));
+  assert.equal(source.getText(), saved + 'A');
+  assert.equal(source.input.selectionStart, saved.length + 1);
+  assert.equal(source.redo(), true); assert.equal(source.getText(), saved + 'AB');
+  source.undo(); source.undo();
+  assert.equal(source.getText(), saved);
+  assert.equal(source.input.selectionStart, saved.length);
+});
+
 test('source replacement keeps context and scroll while refreshing once before notifying the document', t => {
   const changes = [];
   const source = setup(t, 'one SELECT tail', context => changes.push({

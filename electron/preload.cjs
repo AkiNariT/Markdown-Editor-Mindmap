@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('moye', {
   openTemplate: () => invoke('template'),
   activateTab: id => invoke('activate', id), closeTab: id => invoke('close-tab', id),
   openDropped: file => invoke('drop', webUtils.getPathForFile(file)),
-  newDocument: () => invoke('new'), save: (content, as, sourceSafe = false) => invoke('save', content, Boolean(as), Boolean(sourceSafe)),
+  newDocument: () => invoke('new'), save: (id, content, as, sourceSafe = false) => invoke('save', id, content, Boolean(as), Boolean(sourceSafe)),
   newMindmap: () => invoke('new-mindmap'),
   mindmapFromOutline: (id, content) => invoke('mindmap-from-outline', id, content),
   exportMindmap: (id, content, options) => invoke('mindmap-export', id, content, options),

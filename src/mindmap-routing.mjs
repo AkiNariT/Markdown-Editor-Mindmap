@@ -2,6 +2,12 @@
 // way. The index belongs to one render, so collapsed/moved cards cannot leave
 // stale obstacles behind. Search has a finite budget even for crowded maps.
 const EPSILON = .00001;
+const corridorAreas = new WeakMap();
+function includeBounds(area, box) {
+  area.left = Math.min(area.left, box.left); area.top = Math.min(area.top, box.top);
+  area.right = Math.max(area.right, box.right); area.bottom = Math.max(area.bottom, box.bottom);
+  return area;
+}
 const distance = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 const equal = (a, b) => Math.abs(a.x - b.x) < EPSILON && Math.abs(a.y - b.y) < EPSILON;
 const segmentBounds = (a, b) => ({ left: Math.min(a.x, b.x), top: Math.min(a.y, b.y), right: Math.max(a.x, b.x), bottom: Math.max(a.y, b.y) });
@@ -159,7 +165,7 @@ class MinHeap {
  * route; the finite legacy path is retained as a best-effort fallback.
  */
 export function createMindmapRouter(positions, {
-  width = 216, height = 96, columnGap = 76, clearance = 8, rightExtra = 14, maxSearch = 6000,
+  width = 216, height = 96, columnGap = 76, clearance = 8, rightExtra = 14, maxSearch = 6000, movedIds, previousPositions, cacheCorridors = false,
 } = {}) {
   const cards = new Map();
   for (const [id, point] of positions) {
@@ -171,6 +177,14 @@ export function createMindmapRouter(positions, {
   }
   const rectangles = [...cards.values()].map(card => ({ id: card.id, left: card.left - clearance, top: card.top - clearance, right: card.right + rightExtra + clearance, bottom: card.bottom + clearance }));
   const expanded = new Map(rectangles.map(rect => [rect.id, rect]));
+  const moved = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+  for (const id of movedIds || []) {
+    const rect = expanded.get(id);
+    if (rect) includeBounds(moved, rect);
+    const before = previousPositions?.get(id);
+    if (before) includeBounds(moved, { left: before.x - clearance, top: before.y - clearance,
+      right: before.x + (before.width || width) + rightExtra + clearance, bottom: before.y + (before.height || height) + clearance });
+  }
   const query = spatialIndex(rectangles, Math.max(256, width + rightExtra + clearance * 2));
   const outer = rectangles.length ? {
     left: Math.min(...rectangles.map(r => r.left)) - clearance,
@@ -324,9 +338,15 @@ export function createMindmapRouter(positions, {
   }
 
   return {
-    route(fromId, toId, { bow = 0, crystal = false, lineStyle = 'curve' } = {}) {
+    route(fromId, toId, { bow = 0, crystal = false, lineStyle = 'curve' } = {}, previous) {
       const from = cards.get(fromId), to = cards.get(toId);
       if (!from || !to || fromId === toId) return null;
+      // Only previews supply a previous route with unchanged endpoints and style.
+      // A corridor may disappear or straighten if a card enters or leaves its area.
+      if (previous && movedIds && !movedIds.has(fromId) && !movedIds.has(toId) && lineStyle !== 'orthogonal') {
+        const box = !previous.rerouted && !previous.blocked ? previous.bounds : previousPositions && corridorAreas.get(previous);
+        if (box && (box.right < moved.left || box.left > moved.right || box.bottom < moved.top || box.top > moved.bottom)) return previous;
+      }
       const original = legacyRoute(from, to, columnGap, bow, crystal, lineStyle);
       let starts, ends;
       if (lineStyle === 'orthogonal') {
@@ -356,10 +376,20 @@ export function createMindmapRouter(positions, {
         left: Math.min(...surrounding.map(r => r.left)), top: Math.min(...surrounding.map(r => r.top)),
         right: Math.max(...surrounding.map(r => r.right)), bottom: Math.max(...surrounding.map(r => r.bottom)),
       };
-      const points = starts.length && ends.length && (corridorRoute(from, to, starts, ends) || quickRoute(starts, ends, envelope) || laneRoute(from, to, starts, ends) || search(starts, ends) || quickRoute(starts, ends, outer));
+      const corridor = starts.length && ends.length && corridorRoute(from, to, starts, ends);
+      const points = corridor || (starts.length && ends.length && (quickRoute(starts, ends, envelope) || laneRoute(from, to, starts, ends) || search(starts, ends) || quickRoute(starts, ends, outer)));
       if (!points) return { ...original, blocked: true };
       const d = points.map((point, i) => `${i ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
-      return describe(d, points, true);
+      const result = describe(d, points, true);
+      if (corridor && cacheCorridors) {
+        // Port tests and both candidate corridors lie inside the endpoint
+        // envelope. The original curve may extend beyond it. Global searches
+        // depend on other cards' lanes and never enter this cache.
+        const area = { ...original.bounds };
+        includeBounds(area, expanded.get(fromId)); includeBounds(area, expanded.get(toId));
+        corridorAreas.set(result, area);
+      }
+      return result;
     },
   };
 }

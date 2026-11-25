@@ -40,22 +40,22 @@ function payload(value = doc, editable = value.editable) {
   return { ...data, recovery: { ...(draft !== undefined && (value.dirty || !value.path) ? { draft } : {}), viewState: viewState || {}, visualLossy: visualLossy === true }, skillDocument: Boolean(isSkillDocument(value)), unsupported: value.type === 'mindmap' ? [] : helpers.detectUnsupported(value.content), editable, tabs: tabList() };
 }
 function updateTitle() { win.setTitle((needsSave(doc) ? '• ' : '') + (doc.path ? path.basename(doc.path) : (doc.suggestedName || t('未命名'))) + ' — MD'); }
-function activateDocument(id, notify = true, headingPath) {
+function activateDocument(id, notify = true, headingLink) {
   const value = documents.get(id); if (!value) throw new Error(t('文档标签已关闭。'));
   doc = value; updateTitle();
-  if (notify) win.webContents.send('moye:document', { ...payload(), ...(headingPath ? { headingPath } : {}) });
+  if (notify) win.webContents.send('moye:document', { ...payload(), ...(headingLink ? { headingLink } : {}) });
 }
-function setDocument(value, editable = false, notify = true, headingPath) {
+function createDocumentEntry(value, editable) {
+  return { ...value, id: randomUUID(), imageKey: randomUUID(), dirty: false, copyOnly: false, editable };
+}
+function setDocument(value, editable = false, notify = true, headingLink) {
   if (documents.size >= 80) throw new Error(t('最多打开 80 个标签，请关闭部分标签后重试。'));
-  const entry = { ...value, id: randomUUID(), imageKey: randomUUID(), dirty: false, copyOnly: false, editable };
-  documents.set(entry.id, entry); activateDocument(entry.id, notify, headingPath);
+  const entry = createDocumentEntry(value, editable);
+  documents.set(entry.id, entry); activateDocument(entry.id, notify, headingLink);
 }
-function sessionSnapshot(entries = [...documents.values()]) { return { version: 1, activeId: doc?.id ?? null, documents: entries }; }
+function sessionSnapshot(entries = [...documents.values()], activeId = doc?.id ?? null) { return { version: 1, activeId, documents: entries }; }
 async function persistSession(forgetPrevious = false, snapshot = sessionSnapshot()) {
-  const saved = await recoveryStore.save(snapshot);
-  // Closed tabs and explicit discards must also disappear from the fallback.
-  if (forgetPrevious) await recoveryStore.save(snapshot);
-  return saved;
+  return recoveryStore.save(snapshot, { forgetPrevious });
 }
 async function checkpoint(value) {
   const saved = await recovery.persistCheckpoint(documents, value,
@@ -118,6 +118,12 @@ async function prepareDraftLink(record) {
   const node = data.nodes.find(value => value.id === pendingLink.nodeId);
   return node && !node.file ? { map, data, node } : null;
 }
+async function saveFromTab(id, content, as, sourceSafe) {
+  const record = documents.get(id);
+  if (!record) throw new Error(t('文档标签已关闭。'));
+  if (record !== doc) throw new Error(t('文档已切换，请切回原标签后再保存。'));
+  return saveDocument(content, as, record, sourceSafe === true);
+}
 async function saveDocument(content, as = false, document = doc, sourceSafe = false) {
   const record = document;
   const isMindmap = record.type === 'mindmap';
@@ -148,11 +154,12 @@ async function saveDocument(content, as = false, document = doc, sourceSafe = fa
   if (copyOnly && targetKey === record.fileKey) throw new Error(t('这份文件含未支持的格式，请选择另一个文件名保存副本。'));
   let expected = record.fingerprint;
   const samePath = record.path && targetKey === record.fileKey;
+  const rebasedImages = new Map();
   if (!samePath) {
     try { expected = (await files.readDocument(target)).fingerprint; } catch (error) { if (error.code === 'ENOENT') expected = null; else throw error; }
     if (record.path && !isMindmap) {
       const header = helpers.splitFrontmatter(content);
-      const rebased = imageHelpers.rebaseImages(header ? header.body : content, path.dirname(record.path), path.dirname(target));
+      const rebased = imageHelpers.rebaseImages(header ? header.body : content, path.dirname(record.path), path.dirname(target), rebasedImages);
       content = header ? header.prefix + rebased : rebased;
     }
   }
@@ -168,7 +175,8 @@ async function saveDocument(content, as = false, document = doc, sourceSafe = fa
     const header = helpers.splitFrontmatter(content);
     const materialized = await imageAssetStore.materialize(record, header ? header.body : content, target);
     content = header ? header.prefix + materialized.content : materialized.content;
-    imageReplacements = materialized.imageReplacements;
+    imageReplacements = [...rebasedImages].map(([from, to]) => ({ from, to }));
+    imageReplacements.push(...materialized.imageReplacements);
     rollbackImages = materialized.rollback;
   }
   let saved;
@@ -299,7 +307,7 @@ async function readOpenedDocument(target) {
   if (mindmapPath(target)) return { ...value, type: 'mindmap', mapData: mindmapFiles.resolveMindmapFiles(mindmap.parseMindmap(value.content), value.path) };
   return value;
 }
-async function openDocument(target, notify = true, editable = false, headingPath) {
+async function openDocument(target, notify = true, editable = false, headingLink) {
   let targets = target ? [target] : [];
   if (!target) {
     const choice = await dialog.showOpenDialog(win, { title: t('打开文档'), properties: ['openFile', 'multiSelections'], filters: [{ name: t('Markdown 与思维导图'), extensions: ['md', 'markdown', 'mdmap'] }] });
@@ -309,8 +317,8 @@ async function openDocument(target, notify = true, editable = false, headingPath
     if (!supportedPath(target)) throw new Error(t('请打开 .md、.markdown 或 .mdmap 文件。'));
     const key = await fileKey(target);
     const existing = [...documents.values()].find(value => value.fileKey === key);
-    if (existing) activateDocument(existing.id, notify, headingPath);
-    else setDocument({ ...await readOpenedDocument(target), fileKey: key }, editable, notify, headingPath);
+    if (existing) activateDocument(existing.id, notify, headingLink);
+    else setDocument({ ...await readOpenedDocument(target), fileKey: key }, editable, notify, headingLink);
     await persistSession();
   }
   return { ok: true };
@@ -318,11 +326,14 @@ async function openDocument(target, notify = true, editable = false, headingPath
 async function closeDocument(id) {
   const entry = documents.get(id); if (!entry) return { canceled: true };
   if (!await guardUnsaved(entry)) return { canceled: true };
-  const ids = [...documents.keys()], index = ids.indexOf(id), active = doc === entry;
+  const entries = [...documents.values()], index = entries.indexOf(entry);
+  entries.splice(index, 1);
+  if (!entries.length) entries.push(createDocumentEntry({ path: null, content: '', fingerprint: null }, true));
+  const active = doc === entry ? entries[Math.min(index, entries.length - 1)] : doc;
+  await persistSession(true, sessionSnapshot(entries, active.id));
   documents.delete(id);
-  if (!documents.size) setDocument({ path: null, content: '', fingerprint: null }, true, false);
-  else if (active) activateDocument(ids[index + 1] || ids[index - 1], false);
-  await persistSession(true);
+  if (!documents.size) documents.set(active.id, active);
+  if (doc === entry) activateDocument(active.id, false);
   // Both durable snapshots have dropped this tab. Cleanup is deliberately not
   // performed while asking Save/Discard: a later Cancel must retain its images.
   await imageAssetStore.discard(id).catch(error => console.error(t('暂存图片清理失败'), error.code));
@@ -635,11 +646,12 @@ if (ownsProfile) app.whenReady().then(async () => {
     const node = mapData.nodes.find(value => value.id === nodeId);
     if (!node) throw new Error(t('这个节点已不存在。'));
     if (!node.file) throw new Error(t('请先为这个节点关联 Markdown 文件。'));
-    try { return await openDocument(node.file, true, created === true, node.headingPath); }
+    const headingLink = node.headingPath && { mapId: id, nodeId, file: node.file, headingPath: node.headingPath, headingAnchor: node.headingAnchor };
+    try { return await openDocument(node.file, true, created === true, headingLink); }
     catch (error) { if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw new Error(t('关联的 Markdown 文件已移动或删除，请重新关联文件。')); throw error; }
   });
   handle('rename', renameDocument);
-  handle('save', (content, as, sourceSafe) => saveDocument(content, as, doc, sourceSafe === true));
+  handle('save', saveFromTab);
   handle('preview', (id, content) => {
     const record = documents.get(id);
     if (!record || typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 8 * 1024 * 1024) throw new Error(t('预览内容无效或超过 8 MB。'));

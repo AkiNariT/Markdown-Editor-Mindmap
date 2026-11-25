@@ -38,12 +38,13 @@ export function measureNode(node, nodeSize = 'standard') {
 
 /** Coordinates are document-space top-lefts. Negative manual offsets remain
  * intact; the caller may translate bounds and retain its viewport padding. */
-export function layoutMindmap(data, { paddingX = 0, paddingY = 0, drag = null } = {}) {
+export function layoutMindmap(data, { paddingX = 0, paddingY = 0, drag = null, measure = measureNode } = {}) {
   const byId = new Map(data.nodes.map(item => [item.id, item]));
   const children = new Map(data.nodes.map(item => [item.id, []]));
   for (const item of data.nodes) if (item.parent !== null) children.get(item.parent).push(item);
-  const sizes = new Map(data.nodes.map(item => [item.id, measureNode(item, data.nodeSize)])), heights = new Map();
+  const sizes = new Map(), heights = new Map();
   function treeHeight(item) {
+    sizes.set(item.id, measure(item, data.nodeSize));
     const list = item.collapsed ? [] : children.get(item.id);
     const height = Math.max(sizes.get(item.id).height, list.reduce((sum, child) => sum + treeHeight(child), 0) + Math.max(0, list.length - 1) * ROW_GAP);
     heights.set(item.id, height); return height;

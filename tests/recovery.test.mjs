@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, readdir, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, readdir, rm, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRecoveryStore, normalizeSession, mergeCheckpoint, persistCheckpoint, sanitizeViewState, sessionAfterDiscard } from '../src/recovery.mjs';
 
@@ -83,6 +83,22 @@ test('concurrent snapshots serialize invocation order and copy input immediately
   assert.equal((await store.load()).session.documents[0].draft, '11');
   assert.equal(JSON.parse(await readFile(join(directory, 'session.backup.json'), 'utf8')).documents[0].draft, '10');
   assert.equal((await readdir(directory)).some(name => name.endsWith('.tmp')), false);
+});
+
+test('a failed close preserves the sole readable fallback if the primary was corrupt', async t => {
+  const { directory, store } = await fixture(t);
+  const previous = session([{ ...baseline, dirty: true, draft: 'last good draft' }]);
+  await store.save(previous);
+  await store.save(previous);
+  const primary = join(directory, 'session.json');
+  await writeFile(primary, '{invalid');
+  let primaryWrites = 0;
+  const fault = createRecoveryStore(directory, { renameFile: async (from, to) => {
+    if (to === primary && ++primaryWrites === 2) throw new Error('new primary failed');
+    return rename(from, to);
+  } });
+  await assert.rejects(fault.save(session([]), { forgetPrevious: true }), /new primary failed/);
+  assert.equal((await store.load()).session.documents[0].draft, 'last good draft');
 });
 
 test('failed disk writes do not poison later queued saves', async t => {

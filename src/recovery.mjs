@@ -127,7 +127,7 @@ export function sessionAfterDiscard(session, discarded) {
   return { ...session, documents, activeId: documents.some(entry => entry.id === session.activeId) ? session.activeId : documents[0]?.id ?? null };
 }
 
-export function createRecoveryStore(directory) {
+export function createRecoveryStore(directory, { renameFile = rename } = {}) {
   const primary = join(directory, 'session.json'), backup = join(directory, 'session.backup.json');
   let queued = Promise.resolve();
   async function readSnapshot(target) {
@@ -135,12 +135,18 @@ export function createRecoveryStore(directory) {
     const text = await readFile(target, 'utf8');
     return { text, session: normalizeSession(JSON.parse(text)) };
   }
+  async function previousText(target) {
+    try { return (await readSnapshot(target)).text; }
+    catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'INVALID_RECOVERY' && !(error instanceof SyntaxError)) throw error;
+    }
+  }
   async function atomicWrite(target, content) {
     const temporary = target + '.' + randomUUID() + '.tmp'; let handle;
     try {
       handle = await open(temporary, 'wx', 0o600);
       await handle.writeFile(content, 'utf8'); await handle.sync(); await handle.close(); handle = null;
-      await rename(temporary, target);
+      await renameFile(temporary, target);
     } finally {
       if (handle) await handle.close().catch(() => {});
       await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') console.error(t('恢复临时文件清理失败'), error.code); });
@@ -165,7 +171,7 @@ export function createRecoveryStore(directory) {
         return { session: null, notice: t('本地恢复记录无法读取，原始文档未改动。'), source: null };
       }
     },
-    save(value) {
+    save(value, { forgetPrevious = false } = {}) {
       let snapshot, content;
       try {
         snapshot = normalizeSession(value); snapshot.at = new Date().toISOString(); content = JSON.stringify(snapshot);
@@ -173,10 +179,16 @@ export function createRecoveryStore(directory) {
       } catch (error) { return Promise.reject(error); }
       const operation = queued.then(async () => {
         await mkdir(directory, { recursive: true });
-        let previous;
-        try { previous = (await readSnapshot(primary)).text; }
-        catch (error) { if (!['ENOENT'].includes(error.code) && !(error instanceof SyntaxError) && error.code !== 'INVALID_RECOVERY') throw error; }
-        if (previous !== undefined) await atomicWrite(backup, previous);
+        const previous = await previousText(primary);
+        if (forgetPrevious) {
+          // The primary is the commit point. Keep the old session readable
+          // there until the fallback is updated and the final rename succeeds.
+          if (previous === undefined) {
+            const fallback = await previousText(backup);
+            if (fallback !== undefined) await atomicWrite(primary, fallback);
+          }
+          await atomicWrite(backup, content);
+        } else if (previous !== undefined) await atomicWrite(backup, previous);
         await atomicWrite(primary, content); await syncDirectory();
         return { ok: true, at: snapshot.at };
       });
