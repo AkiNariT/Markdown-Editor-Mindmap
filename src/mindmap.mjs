@@ -45,6 +45,9 @@ export function validateMindmap(value) {
         throw new Error(t('关联标题路径无效，需要第 7 版导图及有效的标题层级与序号。'));
       }
       normalized.headingPath = parts.map(({ level, text, occurrence }) => ({ level, text, occurrence }));
+      const confirmation = parts.at(-1).requiresConfirmation;
+      if (confirmation !== undefined && typeof confirmation !== 'boolean') throw new Error(t('关联标题的上下文信息无效。'));
+      if (confirmation) normalized.headingPath.at(-1).requiresConfirmation = true;
     }
     if (Object.hasOwn(item, 'headingAnchor')) {
       const anchor = item.headingAnchor;

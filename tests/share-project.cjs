@@ -32,16 +32,18 @@ async function run() {
   const note = path.join(notes, '规格.md');
   const image = path.join(original, '插图.png');
   const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR2QAAAAASUVORK5CYII=', 'base64');
-  const diskText = '# 规格\n\n## 实施\n\n第一节\n\n## 实施\n\n![样图](../插图.png)\n';
+  const diskText = '# 规格\n\n## 实施\n\n第一节\n\n## 实施\n\n![样图](../插图.png)\n\n## 补充\n';
   await fs.writeFile(note, diskText);
   await fs.writeFile(image, bytes);
   const map = path.join(original, '工作图.mdmap');
   const node = (id, parent, file = null) => ({ id, parent, text: id, file, collapsed: false });
-  const section = { ...node('资料', '项目', note), offset: { x: 20, y: 10 }, subtitle: '设计备注',
-    headingPath: [{ level: 1, text: '规格', occurrence: 1 }, { level: 2, text: '实施', occurrence: 2 }] };
+  const { markdownToMindmap } = await import('../src/mindmap-outline.mjs');
+  const { headingPath, headingAnchor } = markdownToMindmap(diskText, { file: note }).nodes[2];
+  const section = { ...node('资料', '项目', note), offset: { x: 20, y: 10 }, subtitle: '设计备注', headingPath, headingAnchor };
+  const legacy = { ...node('旧版定位', '项目', note), headingPath };
   const relation = { id: 'review', from: '资料', to: '新稿', label: '交叉引用', arrow: 'end' };
   const originalMap = JSON.stringify({ format: 'md-mindmap', version: 7, theme: 'classic', root: '项目',
-    nodes: [node('项目', null), section, node('新稿', '项目')], connections: [relation] });
+    nodes: [node('项目', null), section, { ...node('新稿', '项目'), subtitle: '接收方练习' }, legacy], connections: [relation] });
   await fs.writeFile(map, originalMap);
   const zip = path.join(dir, '发送给同事.zip');
   let liveDraft;
@@ -60,9 +62,11 @@ async function run() {
       dialog.showSaveDialog = async () => { globalThis.shareSaves++; return { filePath: filename, canceled: false }; };
       dialog.showMessageBox = async (_win, options) => { globalThis.shareWarnings.push(options); return { response: options.cancelId }; };
     }, zip);
-    await openNode('资料');
+    await openNode('旧版定位');
     await page.locator('#heading-options').selectOption('2');
     await page.locator('#heading-open').click();
+    await goBack(); await openNode('资料');
+    await page.waitForFunction(() => CSS.highlights.get('md-linked-heading')?.values().next().value?.startContainer === document.querySelectorAll('.tiptap h2')[1]);
     await page.getByRole('button', { name: '源码', exact: true }).click();
     await page.getByRole('button', { name: '编辑', exact: true }).click();
     const source = page.locator('.source-input');
@@ -102,12 +106,11 @@ async function run() {
   try {
     const page = await second.firstWindow();
     await page.locator('[data-node-id="资料"]').dblclick();
-    await page.locator('#heading-options').selectOption('2');
-    await page.locator('#heading-open').click();
     await page.waitForFunction(() => {
       const [range] = CSS.highlights.get('md-linked-heading') || [];
       return range?.startContainer === document.querySelectorAll('.tiptap h2')[1];
     });
+    assert.equal(await page.locator('#heading-choice').isVisible(), false);
     await page.getByText('尚未保存的修订', { exact: true }).waitFor();
     await page.waitForFunction(() => document.querySelector('.tiptap img[alt="样图"]')?.naturalWidth === 1);
     const markdownZip = path.join(dir, '单篇.zip'), standalone = path.join(dir, '单篇解压');
@@ -121,10 +124,21 @@ async function run() {
     const { imageDestinations } = await import('../src/images.mjs');
     assert.deepEqual(await fs.readFile(path.join(standalone, decodeURIComponent(imageDestinations(text)[0]))), bytes);
     assert.match(text, /尚未保存的修订/);
-    await page.getByRole('tab', { name: '工作图.mdmap', exact: true }).click();
+    const back = page.getByRole('button', { name: '返回来源节点', exact: true });
+    await back.click();
+    await page.locator('[data-node-id="资料"][aria-pressed="true"]').waitFor();
+    await page.locator('[data-node-card="项目"] .mindmap-fold').click();
+    assert.equal(await page.locator('[data-node-id="新稿"]').count(), 0);
+    await page.keyboard.press('Control+f');
+    await page.locator('#find-query').fill('接收方练习');
+    await page.locator('[data-node-id="新稿"][aria-pressed="true"]').waitFor();
+    await page.keyboard.press('Escape');
     await page.locator('[data-node-id="新稿"]').dblclick();
     await page.locator('.tiptap h1').filter({ hasText: /^新稿$/ }).waitFor();
     await page.locator('.tiptap > p').filter({ hasText: /^草稿中的正文$/ }).waitFor();
+    await back.click();
+    await page.locator('[data-node-id="新稿"][aria-pressed="true"]').waitFor();
+    assert.equal(await page.locator('#dirty-dot').isVisible(), false, '阅读、查找和返回应保留已保存状态');
   } finally { await close(second); }
   console.log('PASS: ZIP preserves linked changes, pending node draft and offline images under a fresh profile. Missing resources can cancel export.');
 }

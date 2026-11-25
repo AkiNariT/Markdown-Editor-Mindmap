@@ -82,13 +82,46 @@ export function findMarkdownHeading(text, path) {
 export function resolveHeadingLink(text, { headingPath, headingAnchor }) {
   const headings = documentHeadings(text, true);
   const key = namedPath(headingPath), candidates = headings.filter(h => h.key === key);
+  return { headings, target: resolveCandidate(candidates, headingPath, headingAnchor), candidates };
+}
+function resolveCandidate(candidates, headingPath, headingAnchor) {
+  if (headingPath.at(-1).requiresConfirmation) return undefined;
   const exact = candidates.find(h => matchesPath(h, headingPath));
-  if (headingAnchor && exact && headingAnchor.document === exact.anchor.document) return { headings, target: exact, candidates };
+  if (headingAnchor && exact && headingAnchor.document === exact.anchor.document) return exact;
   const matching = headingAnchor ? candidates.filter(h => h.anchor.section === headingAnchor.section) : [];
-  let target;
-  if (headingAnchor?.copies === 1 && matching.length === 1) target = matching[0];
-  else if (candidates.length === 1 && (headingAnchor ? headingAnchor.count === 1 : headingPath.every(part => part.occurrence === 1))) target = candidates[0];
-  return { headings, target, candidates };
+  if (headingAnchor?.copies === 1 && matching.length === 1) return matching[0];
+  if (candidates.length === 1 && (headingAnchor ? headingAnchor.count === 1 : headingPath.every(part => part.occurrence === 1))) return candidates[0];
+}
+
+export function relocateHeadingAnchors(nodes, original, rewritten) {
+  if (!nodes.length || original === rewritten) return false;
+  const before = documentHeadings(original, true), after = documentHeadings(rewritten, true);
+  // An image destination edit may shift source offsets, but must preserve the
+  // complete ordered heading tree before its indexes can identify counterparts.
+  if (before.length !== after.length || before.some((h, i) => !matchesPath(h, after[i].path))) return false;
+  const groups = Map.groupBy(before, h => h.key), copiedGroups = Map.groupBy(after, h => h.key);
+  let changed = false;
+  for (const node of nodes) {
+    const key = namedPath(node.headingPath);
+    const target = resolveCandidate(groups.get(key) || [], node.headingPath, node.headingAnchor);
+    if (!target) {
+      if (!resolveCandidate(copiedGroups.get(key) || [], node.headingPath, node.headingAnchor)) continue;
+      // A rewritten image URL has accidentally recreated stale evidence. Drop
+      // it. A later ordinal already requires a choice without an anchor. For a
+      // first ordinal, keep that choice mandatory even if a sibling disappears.
+      delete node.headingAnchor;
+      if (node.headingPath.every(part => part.occurrence === 1)) node.headingPath.at(-1).requiresConfirmation = true;
+      changed = true;
+      continue;
+    }
+    const copied = after[target.index];
+    // An external document can grow past the occurrence range of a v7 link.
+    if (copied.path.some(part => part.occurrence > 1000)) continue;
+    node.headingPath.forEach((part, i) => { part.occurrence = copied.path[i].occurrence; });
+    Object.assign(node.headingAnchor, copied.anchor);
+    changed = true;
+  }
+  return changed;
 }
 
 export function findRenderedHeading(editorRoot, path, markdown) {

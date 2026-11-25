@@ -101,11 +101,12 @@ function showSourceHit(input, hit) {
 
 export function createDocumentFind({ document: doc, getSurface, canOpen, onOpen }) {
   const bar = doc.getElementById('find-bar'), input = doc.getElementById('find-query');
+  const documentParent = bar.parentNode, documentNext = bar.nextSibling;
   const count = doc.getElementById('find-count'), previous = doc.getElementById('find-previous'), next = doc.getElementById('find-next');
-  let session, clearHit, restoring = false, restoreFrame, layoutFrame;
+  let session, clearHit, restoring = false, restoreFrame, layoutFrame, composingQuery = false;
   const zoom = canvas => parseFloat(getComputedStyle(canvas).getPropertyValue('--document-zoom')) || 1;
   function layoutChanged() {
-    if (!session || layoutFrame !== undefined) return;
+    if (!session || session.map || layoutFrame !== undefined) return;
     layoutFrame = requestAnimationFrame(() => { layoutFrame = undefined; if (session) select(); });
   }
   function status() {
@@ -113,13 +114,17 @@ export function createDocumentFind({ document: doc, getSurface, canOpen, onOpen 
     const total = session.result?.count || 0;
     previous.disabled = next.disabled = !total;
     count.textContent = !input.value ? '' : total ? t('{index} / {count}', { index: session.index + 1, count: total }) : t('无匹配');
-    doc.getElementById('find-scope').textContent = session.scope === 'source' ? t('源码') : t('正文');
+    doc.getElementById('find-scope').textContent = session.map ? t('导图节点') : session.scope === 'source' ? t('源码') : t('正文');
+    bar.setAttribute('aria-label', session.map ? t('查找导图节点') : t('文内查找'));
+    input.placeholder = session.map ? t('查找节点标题或备注') : t('查找文字');
+    input.setAttribute('aria-label', input.placeholder);
   }
   function select() {
     clearHit?.(); clearHit = null;
     status();
     const match = session?.result?.at(session.index);
     if (!match) return;
+    if (session.map) { session.map.revealNode(match, { focus: false }); return; }
     if (session.scope === 'source') { clearHit = showSourceHit(session.source, match); return; }
     const range = visualMatchRange(match);
     CSS.highlights.set('document-find-active', new Highlight(range));
@@ -140,32 +145,38 @@ export function createDocumentFind({ document: doc, getSurface, canOpen, onOpen 
   }
   function search() {
     if (!session) return;
-    session.result = indexFindMatches(session.blocks, input.value);
+    if (session.map) {
+      const nodes = session.map.findNodes(input.value);
+      session.result = { count: nodes.length, at: i => nodes[i] };
+    } else session.result = indexFindMatches(session.blocks, input.value);
     session.index = 0; select();
   }
   function move(direction) {
     const total = session?.result?.count;
     if (total) { session.index = (session.index + direction + total) % total; select(); }
   }
+  function openDocument(surface) {
+    const { canvas, source, visual, scope } = surface;
+    const active = doc.activeElement;
+    const selection = doc.getSelection();
+    const selected = selection.rangeCount && visual.contains(selection.anchorNode) && visual.contains(selection.focusNode)
+      ? { anchor: selection.anchorNode, anchorOffset: selection.anchorOffset, focus: selection.focusNode, focusOffset: selection.focusOffset } : null;
+    const suggestion = scope === 'source' ? source.value.slice(source.selectionStart, Math.min(source.selectionEnd, source.selectionStart + 201))
+      : selected ? selection.toString().slice(0, 201) : '';
+    if (suggestion && suggestion.length <= 200 && !/[\r\n]/.test(suggestion)) input.value = suggestion;
+    session = { ...surface, focus: active?.closest('#more-menu') ? doc.getElementById('more-toggle') : active, selected,
+      top: canvas.scrollTop, left: canvas.scrollLeft, sourceTop: source.scrollTop, sourceLeft: source.scrollLeft,
+      zoom: zoom(canvas), width: canvas.clientWidth, anchor: canvas.clientWidth ? captureReadingPosition(canvas) : null,
+      horizontal: new Map(), blocks: scope === 'source' ? [{ text: source.value }] : visualFindBlocks(visual) };
+    session.resize = new ResizeObserver(layoutChanged);
+    session.resize.observe(canvas); session.resize.observe(source);
+  }
   function open() {
     if (!canOpen()) return false;
     if (!session) {
-      const surface = getSurface();
-      if (!surface) return false;
-      const { canvas, source, visual, scope } = surface;
-      const active = doc.activeElement;
-      const selection = doc.getSelection();
-      const selected = selection.rangeCount && visual.contains(selection.anchorNode) && visual.contains(selection.focusNode)
-        ? { anchor: selection.anchorNode, anchorOffset: selection.anchorOffset, focus: selection.focusNode, focusOffset: selection.focusOffset } : null;
-      const suggestion = scope === 'source' ? source.value.slice(source.selectionStart, Math.min(source.selectionEnd, source.selectionStart + 201))
-        : selected ? selection.toString().slice(0, 201) : '';
-      if (suggestion && suggestion.length <= 200 && !/[\r\n]/.test(suggestion)) input.value = suggestion;
-      session = { ...surface, focus: active?.closest('#more-menu') ? doc.getElementById('more-toggle') : active, selected,
-        top: canvas.scrollTop, left: canvas.scrollLeft, sourceTop: source.scrollTop, sourceLeft: source.scrollLeft,
-        zoom: zoom(canvas), width: canvas.clientWidth, anchor: canvas.clientWidth ? captureReadingPosition(canvas) : null,
-        horizontal: new Map(), blocks: scope === 'source' ? [{ text: source.value }] : visualFindBlocks(visual) };
-      session.resize = new ResizeObserver(layoutChanged);
-      session.resize.observe(canvas); session.resize.observe(source);
+      const surface = getSurface(); if (!surface) return false;
+      if (surface.map) { session = surface; surface.map.host.prepend(bar); }
+      else openDocument(surface);
       bar.hidden = false; search();
     }
     onOpen(); input.focus({ preventScroll: true }); input.select(); return true;
@@ -174,6 +185,12 @@ export function createDocumentFind({ document: doc, getSurface, canOpen, onOpen 
     if (clear) input.value = '';
     if (!session) return;
     const old = session;
+    composingQuery = false;
+    if (old.map) {
+      session = null; bar.hidden = true; documentParent.insertBefore(bar, documentNext);
+      if (focus) old.map.focus();
+      return;
+    }
     old.resize.disconnect(); cancelAnimationFrame(layoutFrame); layoutFrame = undefined;
     cancelAnimationFrame(restoreFrame); restoring = true;
     clearHit?.(); clearHit = null; session = null; bar.hidden = true;
@@ -192,12 +209,14 @@ export function createDocumentFind({ document: doc, getSurface, canOpen, onOpen 
     }
     restoreFrame = requestAnimationFrame(() => { restoring = false; });
   }
-  input.addEventListener('input', search);
+  input.addEventListener('compositionstart', () => { composingQuery = true; });
+  input.addEventListener('compositionend', () => { composingQuery = false; search(); });
+  input.addEventListener('input', event => { if (!composingQuery && !event.isComposing) search(); });
   previous.addEventListener('click', () => { move(-1); input.focus(); });
   next.addEventListener('click', () => { move(1); input.focus(); });
   doc.getElementById('find-close').addEventListener('click', () => close());
   doc.addEventListener('keydown', event => {
-    if (event.isComposing || event.keyCode === 229 || doc.querySelector('dialog[open]')) return;
+    if (event.isComposing || composingQuery || event.keyCode === 229 || doc.querySelector('dialog[open]')) return;
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
       if (!open()) return;
     } else if (session && event.key === 'Escape') close();
@@ -208,7 +227,7 @@ export function createDocumentFind({ document: doc, getSurface, canOpen, onOpen 
   // Clicking a result to continue editing should keep it in view. Restoration
   // belongs to Escape or the close button, not a click into the document.
   doc.addEventListener('pointerdown', event => {
-    if (session && !bar.contains(event.target) && (session.visual.contains(event.target) || event.target === session.source)) {
+    if (session && !bar.contains(event.target) && ((session.map?.host || session.visual).contains(event.target) || event.target === session.source)) {
       close({ focus: false, restore: false });
     }
   }, true);

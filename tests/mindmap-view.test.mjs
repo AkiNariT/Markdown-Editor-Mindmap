@@ -31,6 +31,29 @@ const branch = () => ({ ...base(), nodes: [...base().nodes,
   { id: 'b', parent: 'a', text: '主题 B', file: null, collapsed: false },
 ] });
 const nodeButton = (view, id) => view.host.querySelector(`[data-node-id="${id}"]`);
+test('find and reveal folded nodes in both modes without changing the document or undo stack', () => {
+  const data = branch(); data.version = 6; data.connections = []; data.nodes[1].collapsed = true;
+  data.nodes[1].text = 'Alpha'; data.nodes[2].subtitle = 'ALPHA alpha'; data.nodes[2].text = 'Alpha detail';
+  data.nodes.push({ id: 'other', parent: 'root', text: 'Unrelated', file: null, collapsed: false });
+  for (const editable of [false, true]) {
+    const state = setup(data), { view } = state;
+    try {
+      view.setEditable(editable); const before = view.getText();
+      assert.deepEqual(view.findNodes('alpha'), ['a', 'b']);
+      assert.deepEqual(view.findNodes('PHA aL'), ['b']); assert.deepEqual(view.findNodes(''), []);
+      assert.equal(view.hasNode('b'), true); assert.equal(view.hasNode('gone'), false);
+      assert.equal(nodeButton(view, 'b'), null);
+      assert.equal(view.revealNode('b'), true); assert.equal(nodeButton(view, 'b').getAttribute('aria-pressed'), 'true');
+      assert.equal(document.activeElement, view.host.querySelector('.mindmap-canvas'));
+      assert.equal(view.revealNode('gone'), false); assert.equal(nodeButton(view, 'b').getAttribute('aria-pressed'), 'true');
+      assert.equal(view.revealNode('other'), true); assert.equal(nodeButton(view, 'b'), null);
+      view.revealNode('b'); view.host.querySelector('[data-node-card="a"] .mindmap-fold').click();
+      assert.equal(nodeButton(view, 'b'), null); assert.equal(view.getText(), before); assert.deepEqual(state.changes, []);
+      assert.equal(view.undo(), false);
+      view.setLocked(true); assert.equal(view.revealNode('b'), false);
+    } finally { state.close(); }
+  }
+});
 test('typing keeps existing cards and routes, remeasuring only the edited node', t => {
   const state = setup(branch()), { view } = state;
   try {

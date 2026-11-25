@@ -15,6 +15,7 @@ import { checkpointDraft, createCheckpointController } from './checkpoint.mjs';
 import { createUpdatesUI } from './updates-ui.js';
 import { createWindowsDefaultUI } from './windows-default-ui.mjs';
 import { createDocumentFind } from './document-find.mjs';
+import { createMapOrigins } from './map-origins.mjs';
 import { t, setLocale, getLocale, onLocaleChange } from './i18n.mjs';
 
 const $ = id => document.getElementById(id);
@@ -25,6 +26,7 @@ let linkSelection;
 let namingId;
 let viewMode = 'render', scrollSyncing = false;
 const sessions = new Map();
+const mapOrigins = createMapOrigins((mapId, nodeId) => sessions.get(mapId)?.map?.hasNode(nodeId));
 let tabOrder = [];
 let composing = false;
 let recoveryStatus = '', recoveryFailure = '';
@@ -35,8 +37,10 @@ let lastFindPane = 'render';
 const documentFind = createDocumentFind({
   document,
   onOpen: hideMenus,
-  canOpen: () => loaded && !isMindmap() && !working && !closing && !hasComposition() && !document.querySelector('dialog[open]'),
+  canOpen: () => loaded && !working && !closing && !hasComposition() && !document.querySelector('dialog[open]'),
   getSurface: () => {
+    const map = sessions.get(current?.id)?.map;
+    if (map) return { scope: 'mindmap', map };
     flushCompareInput();
     return { canvas: document.querySelector('.canvas'), visual: editor.view.dom, source: sessions.get(current.id).source.input,
       scope: viewMode === 'compare' ? lastFindPane : viewMode };
@@ -66,6 +70,7 @@ function refreshLanguage() {
   const anchor = loaded && state && !state.map && viewMode !== 'source' ? captureReadingPosition(canvas) : null;
   const sourcePosition = state?.source ? { top: state.source.input.scrollTop, left: state.source.input.scrollLeft } : null;
   applyStaticTranslations();
+  updateMapReturn();
   windowsDefault.refreshLanguage();
   updates.refreshLanguage();
   documentFind.refreshLanguage();
@@ -159,6 +164,7 @@ function updateModeLabels() {
   $('page-mode').textContent = viewMode === 'render' ? (editing ? t('编 辑') : t('阅 读')) : viewMode === 'source' ? (editing ? (copy ? t('源码 · 编辑副本') : t('源码 · 编辑')) : t('源码 · 阅读')) : (copy ? t('实时对照 · 编辑副本') : t('实时对照'));
 }
 function setMode(value) {
+  if (isMindmap() && editing !== value) documentFind.close({ focus: false });
   editing = value; setInputPermissions(); updateModeLabels();
   if (isMindmap()) { document.body.classList.remove('editing'); hideMenus(); updateSelection(); return; }
   $('edit-controls').hidden = !editing || !visualView(); document.body.classList.toggle('editing', editing);
@@ -174,7 +180,10 @@ function visualView() { return viewMode === 'render' || viewMode === 'compare'; 
 function readDocumentParts(value) { const parts = splitFrontmatter(value.content); if (parts && !value.skillDocument) parts.skill = null; return parts; }
 function setMetadataEditable() { for (const id of ['skill-name', 'skill-description']) $(id).readOnly = !editing || !visualView() || working || closing; }
 function setInputPermissions() {
-  $('find-open').disabled = isMindmap() || working || closing;
+  $('return-to-map').disabled = working || closing;
+  $('find-open').disabled = working || closing;
+  const findLabel = $('find-open').querySelector('[data-i18n]');
+  findLabel.dataset.i18n = isMindmap() ? '查找导图节点' : '文内查找'; findLabel.textContent = t(findLabel.dataset.i18n);
   windowsDefault.setLocked(working || closing);
   editor?.setEditable(editing && visualView() && !working && !closing, false); setMetadataEditable();
   const state = sessions.get(current?.id);
@@ -246,7 +255,7 @@ function createSession(value, mountEditor = false) {
     const state = { current: value, dirty: false, editing: Boolean(value.editable), zoom: 100, view: 'mindmap' };
     state.map = createMindmapView(value.mapData, {
       onChange: () => {
-        if (loaded && current?.id === value.id) { updateState({ mapChanged: true }); return; }
+        if (loaded && current?.id === value.id) { documentFind.close({ focus: false }); updateState({ mapChanged: true }); return; }
         state.dirty = state.map.getText() !== state.baselineMap;
         api.setDirty(state.current.id, state.dirty); renderTabs();
       },
@@ -506,6 +515,23 @@ function updateState({ mapChanged = false } = {}) {
   if (dirty !== wasDirty) renderTabs();
   if (document.activeElement !== state.source.input) { updateOutline(); updateSelection(); }
 }
+function updateMapReturn(articleId = current?.id) {
+  const button = $('return-to-map'), origin = mapOrigins.get(articleId);
+  button.hidden = !origin;
+  if (!origin) { button.removeAttribute('title'); return; }
+  const map = sessions.get(origin.mapId).current;
+  button.title = t('返回“{map}”中的来源节点', { map: map.path?.split(/[\\/]/).pop() || map.suggestedName || t('未命名') });
+}
+$('return-to-map').addEventListener('click', async () => {
+  if (!loaded || working || closing || hasComposition() || document.querySelector('dialog[open]')) return;
+  const origin = mapOrigins.get(current.id);
+  if (!origin) { updateMapReturn(); return; }
+  const target = sessions.get(origin.mapId);
+  const result = await action(async () => unpack(await api.activateTab(origin.mapId)));
+  if (result?.ok && !closing && current?.id === origin.mapId && sessions.get(origin.mapId) === target) {
+    target.map.revealNode(origin.nodeId);
+  }
+});
 function loadDocument(docData) {
   if ($('heading-choice').open) $('heading-choice').close('cancel');
   clearLinkedHeading();
@@ -520,6 +546,8 @@ function loadDocument(docData) {
   if (docData.tabs) tabOrder = docData.tabs;
   if (!sessions.has(docData.id)) sessions.set(docData.id, createSession(docData, true));
   const state = sessions.get(docData.id);
+  if (!state.map) mapOrigins.open(docData.id, docData.mapOrigin);
+  updateMapReturn(docData.id);
   $('document-pane').hidden = Boolean(state.map); $('mindmap-pane').hidden = !state.map; $('view-switch').hidden = Boolean(state.map);
   if (state.map) {
     current = state.current; editor = undefined; documentParts = null; dirty = state.dirty; viewMode = 'mindmap';
@@ -1085,11 +1113,12 @@ api.onClosingCanceled(() => { closing = false; setInputPermissions(); updateSele
 api.onDocument(loadDocument);
 api.onSaved(applySaved);
 api.onClosed(({ id, document }) => {
+  mapOrigins.close(id);
   if (current?.id === id) documentFind.close({ focus: false, clear: true });
   oversizedDrafts.delete(id);
   const state = sessions.get(id); clearTimeout(state?.previewTimer); state?.editor?.destroy(); state?.source?.destroy(); state?.map?.destroy(); sessions.delete(id);
   if (current?.id === id) { current = null; editor = undefined; loaded = false; loadDocument(document); }
-  else { tabOrder = document.tabs; renderTabs(); updateRecoveryStatus(); }
+  else { tabOrder = document.tabs; renderTabs(); updateRecoveryStatus(); updateMapReturn(); }
 });
 onLocaleChange(refreshLanguage);
 function markDocumentReady() {

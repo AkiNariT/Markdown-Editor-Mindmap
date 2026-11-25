@@ -6,6 +6,8 @@ import { inflateRawSync } from 'node:zlib';
 import { prepareShareBundle, writeShareBundle } from '../src/share-bundle.mjs';
 import { createMindmap, parseMindmap } from '../src/mindmap.mjs';
 import { imageDestinations } from '../src/images.mjs';
+import { markdownToMindmap, resolveHeadingLink } from '../src/mindmap-outline.mjs';
+import { marked } from 'marked';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl18YoAAAAASUVORK5CYII=', 'base64');
 async function fixture(t) {
@@ -33,6 +35,82 @@ async function readZip(target) {
   }
   return entries;
 }
+
+test('copied heading links still resolve after image paths change, including a uniquely relocated live section', async t => {
+  const base = await fixture(t), note = path.join(base, 'book.md'), file = path.join(base, 'map.mdmap');
+  const original = '# Book\n\n## Details\n\nOther\n\n## Details\n\n![diagram](image.png)\n\n## Twin\nSame\n## Twin\nSame\n';
+  const live = original.replace('## Details', '## Details\n\nNew sibling\n\n## Details');
+  const map = markdownToMindmap(original, { file: note });
+  const second = map.nodes[2], twin = map.nodes[4];
+  const legacy = { ...second, id: 'legacy' }; delete legacy.headingAnchor;
+  map.nodes.push(legacy, ...Array.from({ length: 24 }, (_, i) => ({ ...second, id: 'another-' + i })));
+  second.headingAnchor.custom = 'anchor metadata';
+  second.headingPath.at(-1).custom = 'path metadata';
+  const mapText = JSON.stringify(map);
+  await fs.writeFile(file, mapText); await fs.writeFile(note, original); await fs.writeFile(path.join(base, 'image.png'), png);
+  assert.equal(resolveHeadingLink(live, second).target.path.at(-1).occurrence, 3);
+  assert.equal(resolveHeadingLink(live, twin).target, undefined);
+  const lexer = t.mock.method(marked, 'lexer');
+  let reads = 0;
+  const plan = await prepareShareBundle({ type: 'mindmap', path: file, content: mapText }, {
+    getDocument: async () => { reads++; return { content: live }; },
+  });
+  const headingParses = lexer.mock.calls.filter(call => call.arguments[1]?.tokenizer).length;
+  assert.equal(reads, 1);
+  assert.deepEqual(plan.warnings, []);
+  const archive = path.join(base, 'share.zip'); await writeShareBundle(plan, archive);
+  const packed = await readZip(archive), copied = JSON.parse(packed.get('map.mdmap'));
+  const target = copied.nodes.find(n => n.id === second.id), markdown = packed.get(target.file).toString();
+  assert.ok(markdown.includes('![diagram](../assets/image.png)'));
+  for (const node of [target, copied.nodes.at(-1)]) {
+    const resolved = resolveHeadingLink(markdown, node).target;
+    assert.ok(resolved, 'recipient can open the original image section without making a choice');
+    assert.equal(resolved.path.at(-1).occurrence, 3);
+    assert.equal(node.headingPath.at(-1).occurrence, 3);
+    assert.equal(node.headingAnchor.document, resolved.anchor.document);
+  }
+  assert.equal(target.headingAnchor.custom, 'anchor metadata');
+  assert.equal(target.headingPath.at(-1).custom, 'path metadata');
+  const copiedTwin = copied.nodes.find(n => n.id === twin.id), copiedLegacy = copied.nodes.find(n => n.id === legacy.id);
+  assert.deepEqual(copiedTwin.headingAnchor, twin.headingAnchor);
+  assert.equal(copiedLegacy.headingAnchor, undefined);
+  for (const node of [copiedTwin, copiedLegacy]) assert.equal(resolveHeadingLink(markdown, node).target, undefined);
+  assert.equal(headingParses, 2, 'parse the original and copied outline once per distinct Markdown file');
+  assert.equal(await fs.readFile(file, 'utf8'), mapText); assert.equal(await fs.readFile(note, 'utf8'), original);
+});
+
+test('rewritten image paths never turn an ambiguous or deleted heading into a silent match', async t => {
+  const base = await fixture(t), note = path.join(base, 'book.md'), mapFile = path.join(base, 'map.mdmap');
+  const before = '# Book\n## Details\n![diagram](../assets/one.png)\n## Details\n![diagram](../assets/two.png)\n';
+  const swapped = '# Book\n## Details\n![diagram](two.png)\n## Details\n![diagram](one.png)\n';
+  const oneRemaining = '# Book\n## Details\n![diagram](one.png)\n';
+  const source = markdownToMindmap(before, { file: note });
+  await fs.writeFile(path.join(base, 'one.png'), png); await fs.writeFile(path.join(base, 'two.png'), png);
+  for (const live of [swapped, oneRemaining]) {
+    const plan = await prepareShareBundle({ type: 'mindmap', path: mapFile, content: JSON.stringify(source) }, {
+      getDocument: async () => ({ content: live }),
+    });
+    const mapText = plan.entries.find(e => e.name === plan.rootName).content;
+    const copied = parseMindmap(mapText), first = copied.nodes[1], second = copied.nodes[2];
+    const markdown = plan.entries.find(e => e.name === first.file).content;
+    for (const [index, node] of [first, second].entries()) {
+      assert.equal(resolveHeadingLink(live, source.nodes[index + 1]).target, undefined);
+      assert.equal(resolveHeadingLink(markdown, node).target, undefined, 'packaging must not select a different sibling');
+    }
+    if (live === swapped) assert.equal(second.headingAnchor, undefined, 'the later occurrence can keep asking with its legacy path alone');
+    const editedAgain = '# Book\n## Details\n![diagram](../assets/one.png)\n\n## Other\nUnrelated edit\n';
+    assert.equal(resolveHeadingLink(editedAgain, first).target, undefined);
+    const reexport = await prepareShareBundle({ type: 'mindmap', path: mapFile, content: mapText }, {
+      getDocument: async () => ({ content: editedAgain }),
+    });
+    const newMap = parseMindmap(reexport.entries.find(e => e.name === reexport.rootName).content);
+    const newNote = reexport.entries.find(e => e.name === newMap.nodes[1].file).content;
+    const reopened = resolveHeadingLink(newNote, newMap.nodes[1]);
+    assert.equal(reopened.target, undefined);
+    const chosen = reopened.candidates[0];
+    assert.equal(resolveHeadingLink(newNote, { headingPath: chosen.path, headingAnchor: chosen.anchor }).target?.line, 2);
+  }
+});
 
 test('packages the active Markdown, its referenced images and draft images without touching source or remote URLs', async t => {
   const base = await fixture(t), file = path.join(base, '文章.md'), cache = path.join(base, 'cache.png');

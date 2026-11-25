@@ -102,8 +102,12 @@ const assert = require('node:assert/strict');
     const mapInput = page.locator('.mindmap-text-input');
     await mapInput.fill('用户节点 Unchanged'); await mapInput.blur();
     const mapBefore = await mapInput.inputValue();
+    const nodeTitle = page.locator('.mindmap-node-title').first();
+    const displayedBefore = await nodeTitle.textContent();
     await language('zh-CN'); assert.equal(await mapInput.inputValue(), mapBefore);
-    assert.equal(await page.locator('.mindmap-node-title').first().textContent(), mapBefore);
+    // Layout may insert line breaks inside a word. Compare like with like.
+    assert.equal(await nodeTitle.textContent(), displayedBefore);
+    assert.equal(await page.locator('[data-node-id]').first().getAttribute('aria-label'), mapBefore);
     await language('en'); assert.equal(await mapInput.inputValue(), mapBefore);
     await page.locator('.mindmap-node').first().click({ button: 'right' });
     assert.doesNotMatch((await page.locator('.mindmap-context-menu button').allTextContents()).join(' '), /\p{Script=Han}/u);
@@ -114,7 +118,8 @@ const assert = require('node:assert/strict');
     const mapId = (await page.evaluate(() => window.moye.ready())).id;
     for (const width of [1180, 720]) {
       await page.evaluate(id => window.moye.activateTab(id), mapId); await idle();
-      await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setContentSize(width, 740), width); await settle();
+      await page.setViewportSize({ width, height: 740 }); await settle();
+      assert.equal(await page.evaluate(() => innerWidth), width);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
       assert.ok(await page.locator('.mindmap-toolbar').evaluate(node => [...node.querySelectorAll('button')].every(button => { const r = button.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })));
       await settings();

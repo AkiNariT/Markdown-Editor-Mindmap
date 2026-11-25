@@ -1,4 +1,6 @@
 export default {
+  '返回来源节点': 'Return to source node',
+  '返回“{map}”中的来源节点': 'Return to the originating node in “{map}”',
   '文内查找': 'Find in document',
   '查找文字': 'Find text',
   '上一个匹配': 'Previous match',

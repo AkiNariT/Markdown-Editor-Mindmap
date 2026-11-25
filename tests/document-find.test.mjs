@@ -1,7 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { indexFindMatches, visualFindBlocks, visualMatchRange } from '../src/document-find.mjs';
+import { getLocale, setLocale } from '../src/i18n.mjs';
+import { createDocumentFind, indexFindMatches, visualFindBlocks, visualMatchRange } from '../src/document-find.mjs';
+
+test('the shared find bar navigates map nodes, respects composition and returns focus on Escape', () => {
+  const { window } = new JSDOM('<main><div id="find-bar" hidden><label id="find-scope"></label><input id="find-query"><output id="find-count"></output><button id="find-next"></button><button id="find-previous"></button><button id="find-close"></button></div></main><section id="map" tabindex="0"></section>');
+  const doc = window.document, host = doc.getElementById('map'), hits = [];
+  const map = { host, findNodes: text => text === '甲' ? ['a', 'b'] : [], revealNode: id => hits.push(id), focus: () => host.focus() };
+  const finder = createDocumentFind({ document: doc, getSurface: () => ({ scope: 'mindmap', map }), canOpen: () => true, onOpen() {} });
+  const query = doc.getElementById('find-query'), bar = doc.getElementById('find-bar');
+  const key = (value, options) => doc.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key: value, bubbles: true, ...options }));
+  key('f', { ctrlKey: true }); assert.equal(bar.hidden, false); assert.equal(doc.activeElement, query); assert.ok(host.contains(bar));
+  const originalLocale = getLocale();
+  try {
+    setLocale('en'); finder.refreshLanguage();
+    assert.equal(query.placeholder, 'Find node titles or notes'); assert.equal(bar.getAttribute('aria-label'), 'Find map nodes');
+  } finally { setLocale(originalLocale); finder.refreshLanguage(); }
+  query.dispatchEvent(new window.CompositionEvent('compositionstart')); query.value = '甲'; query.dispatchEvent(new window.Event('input'));
+  key('Enter'); assert.deepEqual(hits, []);
+  query.dispatchEvent(new window.CompositionEvent('compositionend')); assert.deepEqual(hits, ['a']);
+  key('Enter'); assert.equal(doc.getElementById('find-count').textContent, '2 / 2');
+  key('Enter', { shiftKey: true }); assert.deepEqual(hits, ['a', 'b', 'a']);
+  key('Escape'); assert.equal(bar.hidden, true); assert.equal(doc.activeElement, host); assert.ok(doc.querySelector('main').contains(bar));
+  finder.open(); finder.close({ clear: true, focus: false }); assert.equal(query.value, '');
+});
 
 test('literal, non-overlapping search retains Unicode offsets and navigates in either direction', () => {
   const result = indexFindMatches([{ text: '😀Ａ a.b\n中文 A.B 中文' }], 'a.b');

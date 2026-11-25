@@ -39,6 +39,7 @@ Use Headings to map on a saved Markdown document, then double-click a heading no
 If duplicate headings make the destination unclear, use the line number and section preview to choose a heading. To keep the new destination, rebind the node and save the source map.
 While reading a map, you can expand or collapse branches temporarily. Exporting the visible map uses this view. Switching back to editing restores the map's saved folding state.
 Press Ctrl+F to find text in the active Markdown document. In Split view this searches the active pane. Use Enter or Shift+Enter to move between matches and Esc to return to the previous reading position.
+In a map, Ctrl+F finds node titles and notes, including nodes in folded branches. After reading a linked document, use the return button to select its source node in the map.
 
 Headings to map: Create a new map from the Markdown heading hierarchy while keeping the original document and tab. Headings inside code blocks or frontmatter are ignored. Saved source files are linked to the new nodes; unsaved drafts create no fictional path. Full lecture text is not embedded in the map.
 

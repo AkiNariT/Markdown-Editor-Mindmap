@@ -12,6 +12,7 @@ import { splitFrontmatter } from './frontmatter.mjs';
 import { imageDestinations, rewriteImageDestinations } from './images.mjs';
 import { imageExtension, MAX_IMAGE_BYTES } from './image-assets.mjs';
 import { parseMindmap } from './mindmap.mjs';
+import { relocateHeadingAnchors } from './mindmap-outline.mjs';
 
 const error = code => Object.assign(new Error(code), { code });
 const networkPath = value => /^[/\\]{2}/.test(value);
@@ -102,7 +103,7 @@ export async function prepareShareBundle(root, { getDocument, getNodeDraft, reso
   }
   async function copyMarkdown(doc, name) {
     checkDocumentSize(name, doc.content);
-    if (!doc.content.includes('![')) { addDocument(name, doc.content); return; }
+    if (!doc.content.includes('![')) { addDocument(name, doc.content); return doc.content; }
     const header = splitFrontmatter(doc.content), body = header?.body ?? doc.content, replacements = new Map();
     const references = imageDestinations(body);
     for (const ref of references) {
@@ -149,7 +150,9 @@ export async function prepareShareBundle(root, { getDocument, getNodeDraft, reso
       const actual = imageDestinations(rewritten);
       if (actual.length !== expected.size || actual.some(ref => !expected.has(ref))) throw error('SHARE_IMAGE_REWRITE_FAILED');
     }
-    addDocument(name, (header?.prefix || '') + rewritten);
+    const content = (header?.prefix || '') + rewritten;
+    addDocument(name, content);
+    return content;
   }
 
   if (isMap) {
@@ -163,26 +166,30 @@ export async function prepareShareBundle(root, { getDocument, getNodeDraft, reso
       if (ref === null && !draft) continue;
       const source = ref ? localPath(ref, root.path) : null, real = await realLocalPath(source);
       const key = draft ? 'draft\0' + (draft.id || node.id) : resourceKey(real || source || ref);
-      let name = notes.get(key);
-      if (!name) {
+      let note = notes.get(key);
+      if (!note) {
         let candidate = draft?.suggestedName || real || source || ref;
         if (!documentFile(candidate)) candidate = (candidate || 'Document') + '.md';
-        name = allocate('documents', candidate, 'Document.md');
-        notes.set(key, name);
-        let current = draft || (source ? await getDocument?.(source) : null);
-        if (!current && real && documentFile(real)) {
-          try { current = await readDocument(real); }
-          catch (cause) {
-            if (cause.code === 'DOCUMENT_TOO_LARGE') throw tooLarge(name);
-            // Other unreadable node documents are reported in the preview.
-          }
-        }
-        if (current) {
-          if (typeof current.content !== 'string') throw error('SHARE_INVALID_DOCUMENT');
-          await copyMarkdown({ ...current, path: source }, name);
-        } else warnings.push({ kind: ref && networkPath(ref) ? 'remote' : 'missing', document: rootName, reference: ref });
+        note = { name: allocate('documents', candidate, 'Document.md'), ref, source, real, draft, headingLinks: [] };
+        notes.set(key, note);
       }
-      if (node.file !== name) { node.file = name; changed = true; }
+      if (node.headingAnchor) note.headingLinks.push(node);
+      if (node.file !== note.name) { node.file = note.name; changed = true; }
+    }
+    for (const { name, ref, source, real, draft, headingLinks } of notes.values()) {
+      let current = draft || (source ? await getDocument?.(source) : null);
+      if (!current && real && documentFile(real)) {
+        try { current = await readDocument(real); }
+        catch (cause) {
+          if (cause.code === 'DOCUMENT_TOO_LARGE') throw tooLarge(name);
+          // Other unreadable node documents are reported in the preview.
+        }
+      }
+      if (current) {
+        if (typeof current.content !== 'string') throw error('SHARE_INVALID_DOCUMENT');
+        const rewritten = await copyMarkdown({ ...current, path: source }, name);
+        if (relocateHeadingAnchors(headingLinks, current.content, rewritten)) changed = true;
+      } else warnings.push({ kind: ref && networkPath(ref) ? 'remote' : 'missing', document: rootName, reference: ref });
     }
     let content = root.content;
     if (changed) {

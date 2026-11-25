@@ -33,9 +33,10 @@ export function createMindmapView(initialData, options = {}) {
   const undoStack = [], redoStack = [], nodeElements = new Map();
   const measurements = new Map(), branches = new Map();
   const readingFolds = new Map();
-  const isCollapsed = item => readingFolds.get(item.id) ?? item.collapsed;
-  const visibleMap = () => readingFolds.size ? { ...data, nodes: data.nodes.map(item =>
-    readingFolds.has(item.id) ? { ...item, collapsed: isCollapsed(item) } : item) } : data;
+  let revealedAncestors = new Set();
+  const isCollapsed = item => !revealedAncestors.has(item.id) && (readingFolds.get(item.id) ?? item.collapsed);
+  const visibleMap = () => readingFolds.size || revealedAncestors.size ? { ...data, nodes: data.nodes.map(item =>
+    isCollapsed(item) !== item.collapsed ? { ...item, collapsed: isCollapsed(item) } : item) } : data;
   const host = document.createElement('section');
   host.className = 'mindmap-view'; host.setAttribute('aria-label', t('思维导图'));
   const toolbar = document.createElement('div'); toolbar.className = 'mindmap-toolbar'; toolbar.setAttribute('aria-label', t('思维导图工具'));
@@ -226,7 +227,7 @@ export function createMindmapView(initialData, options = {}) {
       if (sibling) draft.nodes.splice(draft.nodes.findIndex(item => item.id === current.id) + 1, 0, newNode);
       else draft.nodes.push(newNode);
       return id;
-    })) { revealNode(id); editSelected(); }
+    })) { scrollToNode(id); editSelected(); }
   }
   function descendants(id) {
     const ids = new Set([id]);
@@ -263,13 +264,16 @@ export function createMindmapView(initialData, options = {}) {
   }
   function toggleCollapsed(id) {
     if (locked || composing || destroyed || !data.nodes.some(item => item.parent === id)) return;
+    const item = node(id), collapsed = !isCollapsed(item);
+    revealedAncestors.delete(id);
     if (!editable) {
-      if (readingFolds.has(id)) readingFolds.delete(id);
-      else readingFolds.set(id, !node(id).collapsed);
+      if (item.collapsed === collapsed) readingFolds.delete(id);
+      else readingFolds.set(id, collapsed);
       render();
       return;
     }
-    mutate(draft => { const item = draft.nodes.find(item => item.id === id); item.collapsed = !item.collapsed; return id; });
+    if (item.collapsed === collapsed) { render(); return; }
+    mutate(draft => { draft.nodes.find(item => item.id === id).collapsed = collapsed; return id; });
   }
   async function linkSelected() {
     if (!editable || locked || composing || selectedNodes.size !== 1 || pendingLink || !options.onLink) return;
@@ -829,7 +833,36 @@ export function createMindmapView(initialData, options = {}) {
     canvas.scrollTop = Math.max(0, (position.y + position.height / 2) * zoom / 100 - canvas.clientHeight / 2);
     capturePosition();
   }
-  function revealNode(id) {
+  function findNodes(query) {
+    const needle = query.toLowerCase();
+    if (!needle) return [];
+    const children = new Map();
+    for (const item of data.nodes) {
+      if (!children.has(item.parent)) children.set(item.parent, []);
+      children.get(item.parent).push(item);
+    }
+    const hits = [];
+    function visit(item) {
+      if (item.text.toLowerCase().includes(needle) || item.subtitle?.toLowerCase().includes(needle)) hits.push(item.id);
+      for (const child of children.get(item.id) || []) visit(child);
+    }
+    visit(children.get(null)[0]); return hits;
+  }
+  function revealNode(id, { focus = true } = {}) {
+    const item = node(id);
+    if (!item || locked || composing || destroyed) return false;
+    dismissTransient();
+    const byId = new Map(data.nodes.map(entry => [entry.id, entry]));
+    const next = new Set();
+    for (let parent = byId.get(item.parent); parent; parent = byId.get(parent.parent)) {
+      if (readingFolds.get(parent.id) ?? parent.collapsed) next.add(parent.id);
+    }
+    if (next.size !== revealedAncestors.size || [...next].some(parent => !revealedAncestors.has(parent))) {
+      revealedAncestors = next; render();
+    }
+    select(id, focus); scrollToNode(id); return true;
+  }
+  function scrollToNode(id) {
     const position = positions.get(id); if (!position || !canvas.clientWidth) return;
     const scale = zoom / 100, left = position.x * scale, top = position.y * scale, margin = 28;
     if (left < canvas.scrollLeft + margin) canvas.scrollLeft = Math.max(0, left - margin);
@@ -1143,7 +1176,9 @@ export function createMindmapView(initialData, options = {}) {
       const previousRect = canvas.getBoundingClientRect(), previousPosition = { left: canvas.scrollLeft, top: canvas.scrollTop };
       const modeChanged = editable !== Boolean(value);
       editable = Boolean(value);
-      if (modeChanged && editable && readingFolds.size) { readingFolds.clear(); render(); }
+      if (modeChanged && (revealedAncestors.size || (editable && readingFolds.size))) {
+        revealedAncestors.clear(); if (editable) readingFolds.clear(); render();
+      }
       else renderSelection();
       resetHint();
       if (modeChanged && host.isConnected && !pendingSessionPosition) {
@@ -1161,6 +1196,7 @@ export function createMindmapView(initialData, options = {}) {
       locked = Boolean(value); renderSelection(); return true;
     },
     isComposing: () => composing,
+    findNodes, revealNode, hasNode: id => Boolean(node(id)),
     refreshTheme: () => { if (!destroyed) { for (const [id, elements] of nodeElements) applyNodeAppearance(elements.card, node(id)); renderSelection(); } },
     setZoom, getZoom: () => zoom, capturePosition, restorePosition, captureSessionState, restoreSessionState,
     focus: () => canvas.focus({ preventScroll: true }),

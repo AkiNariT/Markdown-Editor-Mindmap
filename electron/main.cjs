@@ -40,18 +40,18 @@ function payload(value = doc, editable = value.editable) {
   return { ...data, recovery: { ...(draft !== undefined && (value.dirty || !value.path) ? { draft } : {}), viewState: viewState || {}, visualLossy: visualLossy === true }, skillDocument: Boolean(isSkillDocument(value)), unsupported: value.type === 'mindmap' ? [] : helpers.detectUnsupported(value.content), editable, tabs: tabList() };
 }
 function updateTitle() { win.setTitle((needsSave(doc) ? '• ' : '') + (doc.path ? path.basename(doc.path) : (doc.suggestedName || t('未命名'))) + ' — MD'); }
-function activateDocument(id, notify = true, headingLink) {
+function activateDocument(id, notify = true, navigation) {
   const value = documents.get(id); if (!value) throw new Error(t('文档标签已关闭。'));
   doc = value; updateTitle();
-  if (notify) win.webContents.send('moye:document', { ...payload(), ...(headingLink ? { headingLink } : {}) });
+  if (notify) win.webContents.send('moye:document', { ...payload(), ...navigation });
 }
 function createDocumentEntry(value, editable) {
   return { ...value, id: randomUUID(), imageKey: randomUUID(), dirty: false, copyOnly: false, editable };
 }
-function setDocument(value, editable = false, notify = true, headingLink) {
+function setDocument(value, editable = false, notify = true, navigation) {
   if (documents.size >= 80) throw new Error(t('最多打开 80 个标签，请关闭部分标签后重试。'));
   const entry = createDocumentEntry(value, editable);
-  documents.set(entry.id, entry); activateDocument(entry.id, notify, headingLink);
+  documents.set(entry.id, entry); activateDocument(entry.id, notify, navigation);
 }
 function sessionSnapshot(entries = [...documents.values()], activeId = doc?.id ?? null) { return { version: 1, activeId, documents: entries }; }
 async function persistSession(forgetPrevious = false, snapshot = sessionSnapshot()) {
@@ -307,7 +307,7 @@ async function readOpenedDocument(target) {
   if (mindmapPath(target)) return { ...value, type: 'mindmap', mapData: mindmapFiles.resolveMindmapFiles(mindmap.parseMindmap(value.content), value.path) };
   return value;
 }
-async function openDocument(target, notify = true, editable = false, headingLink) {
+async function openDocument(target, notify = true, editable = false, navigation = { mapOrigin: null }) {
   let targets = target ? [target] : [];
   if (!target) {
     const choice = await dialog.showOpenDialog(win, { title: t('打开文档'), properties: ['openFile', 'multiSelections'], filters: [{ name: t('Markdown 与思维导图'), extensions: ['md', 'markdown', 'mdmap'] }] });
@@ -317,8 +317,8 @@ async function openDocument(target, notify = true, editable = false, headingLink
     if (!supportedPath(target)) throw new Error(t('请打开 .md、.markdown 或 .mdmap 文件。'));
     const key = await fileKey(target);
     const existing = [...documents.values()].find(value => value.fileKey === key);
-    if (existing) activateDocument(existing.id, notify, headingLink);
-    else setDocument({ ...await readOpenedDocument(target), fileKey: key }, editable, notify, headingLink);
+    if (existing) activateDocument(existing.id, notify, navigation);
+    else setDocument({ ...await readOpenedDocument(target), fileKey: key }, editable, notify, navigation);
     await persistSession();
   }
   return { ok: true };
@@ -633,8 +633,9 @@ if (ownsProfile) app.whenReady().then(async () => {
     if (!node) throw new Error(t('这个节点已不存在。'));
     if (node.file) throw new Error(t('这个节点已关联文件，请先解除关联。'));
     const existing = [...documents.values()].find(value => value.pendingMindmapLink?.mapId === id && value.pendingMindmapLink?.nodeId === nodeId);
-    if (existing) activateDocument(existing.id);
-    else setDocument({ path: null, content: mindmapCreate.nodeMarkdown(node.text), fingerprint: null, suggestedName: mindmapCreate.suggestNodeFileName(node.text), namedDraft: true, pendingMindmapLink: { mapId: id, nodeId } }, true);
+    const mapOrigin = { mapId: id, nodeId };
+    if (existing) activateDocument(existing.id, true, { mapOrigin });
+    else setDocument({ path: null, content: mindmapCreate.nodeMarkdown(node.text), fingerprint: null, suggestedName: mindmapCreate.suggestNodeFileName(node.text), namedDraft: true, pendingMindmapLink: mapOrigin }, true, true, { mapOrigin });
     await persistSession();
     return { ok: true, documentId: doc.id };
   });
@@ -647,7 +648,7 @@ if (ownsProfile) app.whenReady().then(async () => {
     if (!node) throw new Error(t('这个节点已不存在。'));
     if (!node.file) throw new Error(t('请先为这个节点关联 Markdown 文件。'));
     const headingLink = node.headingPath && { mapId: id, nodeId, file: node.file, headingPath: node.headingPath, headingAnchor: node.headingAnchor };
-    try { return await openDocument(node.file, true, created === true, headingLink); }
+    try { return await openDocument(node.file, true, created === true, { mapOrigin: { mapId: id, nodeId }, headingLink }); }
     catch (error) { if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw new Error(t('关联的 Markdown 文件已移动或删除，请重新关联文件。')); throw error; }
   });
   handle('rename', renameDocument);
